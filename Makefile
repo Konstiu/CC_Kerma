@@ -27,6 +27,7 @@ run-tests:
 	make concurrency
 	make peers_persistence
 
+
 # 0) Smoke: connect, see a hello, then send our hello + getpeers and see peers
 smoke:
 	@echo "== Smoke =="
@@ -353,7 +354,7 @@ peers_persistence:
 	}
 # Add these new test targets after your existing tests
 
-run-tests-task2: #run-tests
+run-tests-task2: run-tests
 	# Task 2 specific tests
 	make test_peer_validation
 	make test_object_exchange
