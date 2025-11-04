@@ -351,7 +351,134 @@ peers_persistence:
 	    exit 1; \
 	  fi; \
 	}
+# Add these new test targets after your existing tests
 
+run-tests-task2: #run-tests
+	# Task 2 specific tests
+	make test_peer_validation
+	make test_object_exchange
+	make test_transaction_validation
+	make test_gossiping
+
+# Peer validation tests
+test_peer_validation:
+	@echo "== test_peer_validation =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"peers","peers":["256.2.3.4:18018"]}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error"' > /dev/null 2>&1; then \
+	      if echo "$$line" | grep -q 'INVALID_FORMAT'; then \
+	        echo "✓ Invalid IP rejected"; \
+	        exit 0; \
+	      fi; \
+	    fi; \
+	  done; \
+	}
+
+	# Object exchange tests
+test_object_exchange:
+	@echo "== test_object_exchange =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50}],"type":"transaction"}}\n'; \
+	  sleep 0.5; \
+	  printf '{"type":"getobject","objectid":"cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a72"}\n'; \
+	} | timeout 5s nc -v -w 10 localhost 18018 | { \
+	  ok_object=0; \
+	  ok_ihave=0; \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "object"' > /dev/null 2>&1; then \
+	      received_obj=$$(echo "$$line" | jq -c '.object'); \
+	      expected_obj='{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50}],"type":"transaction"}'; \
+	      expected_obj=$$(echo "$$expected_obj"); \
+	      if [ "$$received_obj" = "$$expected_obj" ]; then \
+	        echo "✓ Object matches exactly"; \
+			ok_object=1; \
+	      else \
+	        echo "✗ Object doesn't match"; \
+	        echo "Expected: $$expected_obj"; \
+	        echo "Received: $$received_obj"; \
+	        exit 1; \
+	      fi; \
+	    fi; \
+		if echo "$$line" | jq -e '.type == "ihaveobject"' > /dev/null 2>&1; then \
+	        echo "✓ After object message received, ihaveobject is sent."; \
+			ok_ihave=1; \
+	    fi; \
+	  done; \
+	  if [ $$ok_object -eq 1 ] && [ $$ok_ihave -eq 1 ]; then \
+	    exit 0; \
+	  elif [ $$ok_object -eq 1 ] && [ $$ok_ihave -eq 0 ]; then \
+	    echo "✗ no ihaveobject received"; \
+	    exit 1; \
+	  elif [ $$ok_object -eq 0 ] && [ $$ok_ihave -eq 1 ]; then \
+	    echo "✗ no object received"; \
+	    exit 1; \
+	  else \
+	    echo "✗ neither object nor ihaveobject received"; \
+	    exit 1; \
+	  fi; \
+	  }
+
+test_object_exchange2:
+	@echo "== test_object_exchange2 =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"ihaveobject", "objectid":"cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a78" }\n'; \
+	} | timeout 5s nc -v -w 10 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "getobject"' > /dev/null 2>&1; then \
+	      if echo "$$line" | grep -q 'cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a78'; then \
+	        echo "✓ received getobject with correct objectid"; \
+	        exit 0; \
+	      fi; \
+	    fi; \
+	  done; \
+	  exit 1; \
+	}
+
+# Transaction validation tests
+	#	  printf'{"object":{
+	#	"inputs":[{
+	#		"outpoint":{
+	#			"index":0,
+	#			"txid":"cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a72"
+	#		},
+	#		"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644 cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"
+	#	}],
+	#	"outputs":[
+	#		{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},
+	#		{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":51}
+	#	],
+	#	"type":"transaction"
+	#},"type":"object"}'
+
+test_transaction_invalidation:
+	@echo "== test_transaction_validation =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a72"},"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644 cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":51}],"type":"transaction"},"type":"object"}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error"' > /dev/null 2>&1; then \
+	      if echo "$$line" | grep -q 'INVALID_TRANSACTION'; then \
+	        echo "✓ Invalid transaction rejected"; \
+	        exit 0; \
+	      fi; \
+	    fi; \
+	  done; \
+	  exit 1; \
+	}
 # don't touch these targets 
 docker-build:
 	docker-compose build
