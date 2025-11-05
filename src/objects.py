@@ -9,29 +9,52 @@ import json
 import re
 
 import constants as const
+from message.msgexceptions import ErrorInvalidFormat
+
+
 
 # perform syntactic checks. returns true iff check succeeded
 OBJECTID_REGEX = re.compile("^[0-9a-f]{64}$")
 def validate_objectid(objid_str):
-    pass # todo
+    if not isinstance(objid_str, str):
+        raise ErrorInvalidFormat("Object ID must be a string")
+    if not re.match(OBJECTID_REGEX, objid_str):
+        raise ErrorInvalidFormat("Invalid object ID format: must be 64 hex characters")
+    return True
 
 PUBKEY_REGEX = re.compile("^[0-9a-f]{64}$")
 def validate_pubkey(pubkey_str):
-    pass # todo
-
+    if not isinstance(pubkey_str, str):
+        raise ErrorInvalidFormat("Public key must be a string")
+    if not re.match(PUBKEY_REGEX, pubkey_str):
+        raise ErrorInvalidFormat("Invalid public key format: must be 64 hex characters")
+    return True
 
 SIGNATURE_REGEX = re.compile("^[0-9a-f]{128}$")
 def validate_signature(sig_str):
-    pass # todo
+    if not isinstance(sig_str, str):
+        raise ErrorInvalidFormat("Signature must be a string")
+    if not re.match(SIGNATURE_REGEX, sig_str):
+        raise ErrorInvalidFormat("Invalid signature format: must be 128 hex characters")
+    return True
 
 NONCE_REGEX = re.compile("^[0-9a-f]{64}$")
 def validate_nonce(nonce_str):
-    pass # todo
+    if not isinstance(nonce_str, str):
+        raise ErrorInvalidFormat("Nonce must be a string")
+    if not re.match(NONCE_REGEX, nonce_str):
+        raise ErrorInvalidFormat("Invalid nonce format: must be 64 hex characters")
+    return True
+
 
 
 TARGET_REGEX = re.compile("^[0-9a-f]{64}$")
 def validate_target(target_str):
-    pass # todo
+    if not isinstance(target_str, str):
+        raise ErrorInvalidFormat("Nonce must be a string")
+    if not re.match(TARGET_REGEX, target_str):
+        raise ErrorInvalidFormat("Invalid nonce format: must be 64 hex characters")
+    return True
 
 
 def validate_transaction_input(in_dict):

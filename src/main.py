@@ -10,6 +10,8 @@ from jcs import canonicalize
 
 import mempool
 import peer_db
+import objects
+import object_db
 
 import asyncio
 import ipaddress
@@ -90,7 +92,8 @@ def mk_getobject_msg(objid):
 
 
 def mk_object_msg(obj_dict):
-    pass  # TODO
+    return {"type": "object", "object": obj_dict}
+    #pass  # TODO
 
 
 def mk_ihaveobject_msg(objid):
@@ -292,12 +295,7 @@ def validate_ihaveobject_msg(msg_dict):
             raise ErrorInvalidFormat("Message malformed: objectid is missing!")
 
         objid = msg_dict["objectid"]
-
-        if not isinstance(objid, str):
-            raise ErrorInvalidFormat("Message malformed: objectid is not a string!")
-
-        if not re.compile("[a-fA-F0-9]{64}").fullmatch(objid):
-            raise ErrorInvalidFormat("Message malformed: objectid not valid!")
+        objects.validate_objectid(objid)
 
     except ErrorInvalidFormat as e:
         raise e
@@ -314,13 +312,7 @@ def validate_getobject_msg(msg_dict):
             raise ErrorInvalidFormat("Message malformed: objectid is missing!")
 
         objid = msg_dict["objectid"]
-
-        if not isinstance(objid, str):
-            raise ErrorInvalidFormat("Message malformed: objectid is not a string!")
-
-        if not re.compile("[a-fA-F0-9]{64}").fullmatch(objid):
-            raise ErrorInvalidFormat("Message malformed: objectid not valid!")
-
+        objects.validate_objectid(objid)
     except ErrorInvalidFormat as e:
         raise e
     # pass  # TODO
@@ -390,11 +382,22 @@ def handle_error_msg(msg_dict, peer_self):
 
 
 async def handle_ihaveobject_msg(msg_dict, writer):
-    pass  # TODO
+    objid = msg_dict["objectid"]
+
+    we_have_object = object_db.has_object(objid)
+    if not we_have_object:
+        await write_msg(writer, mk_getobject_msg(objid))
+    # pass  # TODO
 
 
 async def handle_getobject_msg(msg_dict, writer):
-    pass  # TODO
+    objid = msg_dict["objectid"]
+
+    we_have_object = object_db.has_object(objid)
+    if we_have_object:
+        object = object_db.get_object(objid)
+        await write_msg(writer, mk_object_msg(object))
+    #pass  # TODO
 
 
 # return a list of transactions that tx_dict references
@@ -443,7 +446,40 @@ async def del_verify_block_task(task, objid):
 
 # what to do when an object message arrives
 async def handle_object_msg(msg_dict, peer_self, writer):
-    pass  # TODO
+    try:
+        # Validate the message structure
+        if "object" not in msg_dict:
+            raise ErrorInvalidFormat("Message malformed: object is missing!")
+        
+        obj_dict = msg_dict["object"]
+        
+        # Validate the object itself (syntactic checks)
+        objects.validate_object(obj_dict)
+        
+        # Get the object ID
+        objid = objects.get_objid(obj_dict)
+        
+        # Check if we already have it
+        if object_db.has_object(objid):
+            print(f"{peer_self}: Already have object {objid}")
+            return
+
+        # Store the object
+        object_db.store_object(obj_dict)
+        print(f"{peer_self}: Stored new object {objid}")
+        
+        # Gossip to all other connected peers (except the one who sent it)
+        ihaveobject_msg = mk_ihaveobject_msg(objid)
+        for peer, queue in CONNECTIONS.items():
+            # Don't send back to the peer who sent us this object
+            peer_tuple = (peer.host, peer.port)
+            if peer_tuple != peer_self:
+                await queue.put(ihaveobject_msg)
+        
+    except ErrorInvalidFormat as e:
+        raise e
+    except Exception as e:
+        raise ErrorInvalidFormat(f"Object message handling failed: {str(e)}")   #pass  # TODO
 
 
 # returns the chaintip blockid
