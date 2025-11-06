@@ -390,7 +390,7 @@ test_object_exchange:
 	  sleep 0.2; \
 	  printf '{"type":"object","object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50}],"type":"transaction"}}\n'; \
 	  sleep 0.5; \
-	  printf '{"type":"getobject","objectid":"2659fc06b88f1004d3ed1b2d6033d2b9f91c4668d825b6c3b9358844edeea7ec"}\n'; \
+	  printf '{"type":"getobject","objectid":"cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a72"}\n'; \
 	} | timeout 5s nc -v -w 10 localhost 18018 | { \
 	  ok_object=0; \
 	  ok_ihave=1; \

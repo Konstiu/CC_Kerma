@@ -78,7 +78,7 @@ def validate_object(obj_dict):
     return True
 
 def get_objid(obj_dict):
-    h = hashlib.sha256()
+    h = hashlib.blake2s()
     h.update(canonicalize(obj_dict))
     return h.hexdigest()
 
