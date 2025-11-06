@@ -7,7 +7,13 @@ def main():
     con = sqlite3.connect(const.DB_NAME)
     try:
         cur = con.cursor()
-        # TODO - Build database
+        # Build database
+        cur.execute(
+            """CREATE TABLE IF NOT EXISTS objects (
+                id VARCHAR(64) PRIMARY KEY,
+                object BLOB NOT NULL
+            )"""
+        )
 
         # TODO - Preload genesis block
 

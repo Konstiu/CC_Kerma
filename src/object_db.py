@@ -1,40 +1,40 @@
-import json
+import sqlite3
+import constants as const
+from jcs import canonicalize
 import objects
+import json
 
-OBJECTID_DB_FILE = "objects.json"
+def _get_connection():
+    return sqlite3.connect(const.DB_NAME)
+
 def store_object(obj_dict):
     objid = objects.get_objid(obj_dict)
-    # Load existing objects
-    object = {}
-    try:
-        with open(OBJECTID_DB_FILE, 'r') as file:
-            object = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    # Add new object (or overwrite if exists)
-    object[objid] = obj_dict
-   
-    print(f"Storing object {objid}")
-    # Write back to file
-    with open(OBJECTID_DB_FILE, 'w') as file:
-        json.dump(object, file, indent=2)
-    print(f"Object {objid} stored successfully.")
+    json = canonicalize(obj_dict)
+    if isinstance(json, str):
+        json = json.encode('utf-8')
+
+    with _get_connection() as con:
+        cur = con.cursor()
+        cur.execute(
+            "INSERT OR REPLACE INTO objects (id, object) VALUES (?, ?)",
+            (objid, json)
+        )
+        con.commit()
+        
 
 def has_object(objid):
     """Check if an object exists in storage"""
-    try:
-        with open(OBJECTID_DB_FILE, 'r') as file:
-            objects = json.load(file)
-            return objid in objects
-    except (json.JSONDecodeError, FileNotFoundError):
-        return False
+    with _get_connection() as con:
+        cur = con.cursor()
+        cur.execute("SELECT 1 FROM objects WHERE id = ? LIMIT 1", (objid,))
+        return cur.fetchone() is not None
 
 def get_object(objid):
     """Retrieve an object by its ID"""
-    try:
-        with open(OBJECTID_DB_FILE, 'r') as file:
-            objects = json.load(file)
-            return objects.get(objid)
-    except (json.JSONDecodeError, FileNotFoundError):
+    with _get_connection() as con:
+        cur = con.cursor()
+        cur.execute("SELECT data FROM objects WHERE id = ?", (objid,))
+        row = cur.fetchone()
+        if row:
+            return json.loads(row[0])
         return None
-
