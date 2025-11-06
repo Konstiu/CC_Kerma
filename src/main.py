@@ -165,7 +165,7 @@ def validate_hello_msg(msg_dict):
         if not isinstance(version, str):
             raise ErrorInvalidFormat("Message malformed: version is not a string!")
 
-        if not re.compile("0\.10\.\d").fullmatch(version):
+        if not re.compile(r"0\.10\.\d").fullmatch(version):
             raise ErrorInvalidFormat("Version invalid")
 
         validate_allowed_keys(msg_dict, ["type", "version", "agent"], "hello")
@@ -178,11 +178,11 @@ def validate_hello_msg(msg_dict):
 
 # returns true iff host_str is a valid hostname
 def validate_hostname(host_str):
-    if not re.compile("[a-zA-Z\d\.\-\_]{3,50}").fullmatch(host_str):
+    if not re.compile(r"[a-zA-Z\d\.\-\_]{3,50}").fullmatch(host_str):
         return False
         # raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not match regex")
 
-    if not re.compile(".*[a-zA-Z].*").fullmatch(host_str):
+    if not re.compile(r".*[a-zA-Z].*").fullmatch(host_str):
         return False
         # raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not contain a letter")
 
@@ -195,7 +195,7 @@ def validate_hostname(host_str):
 
 # returns true iff host_str is a valid ipv4 address
 def validate_ipv4addr(host_str):
-    if not re.compile("\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}").fullmatch(host_str):
+    if not re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}").fullmatch(host_str):
         return False
 
     try:
