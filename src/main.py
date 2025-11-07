@@ -7,6 +7,7 @@ from message.msgexceptions import (
     ErrorInvalidHandshake,
 )
 from jcs import canonicalize
+from create_db import create_database
 
 import mempool
 import peer_db
@@ -697,6 +698,10 @@ def resupply_connections():
 
 
 async def init():
+
+    # Init database
+    create_database()
+
     global BLOCK_WAIT_LOCK
     BLOCK_WAIT_LOCK = asyncio.Condition()
     global TX_WAIT_LOCK

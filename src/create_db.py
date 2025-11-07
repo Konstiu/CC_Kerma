@@ -3,7 +3,7 @@ import sqlite3
 import objects
 import constants as const
 
-def main():
+def create_database():
     con = sqlite3.connect(const.DB_NAME)
     try:
         cur = con.cursor()
@@ -23,7 +23,3 @@ def main():
         print(str(e))
     finally:
         con.close()
-
-
-if __name__ == "__main__":
-    main()

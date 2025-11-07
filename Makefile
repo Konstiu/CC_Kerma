@@ -2,7 +2,7 @@
 .PHONY: run-tests smoke hello_on_connect handshake_then_getpeers defragmentation invalid_before_hello invalid_garbage invalid_hello_missing_version invalid_hello_nonnumeric_version invalid_hello_wrong_semver double_hello reconnect concurrency peers_persistence
 
 run:
-	cd src && python3 create_db.py && python3 main.py
+	cd src && python3 main.py
 
 clean: remove-submission remove-test
 	# add further actions if needed
