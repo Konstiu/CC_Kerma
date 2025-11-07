@@ -361,7 +361,8 @@ run-tests-task2: run-tests
 	make test_object_exchange2
 	make test_transaction_validation
 	make test_transaction_invalidation
-	make test_gossiping
+	make test_gossiping_ihaveobject
+	make test_send_object_after_gossip_request
 
 # Peer validation tests
 test_peer_validation:
@@ -384,6 +385,8 @@ test_peer_validation:
 	  exit 1; \
 	}
 
+# This is the first Sample Testcase from Task 2
+# Grader 1 sends a new valid transaction object and then requests the same object, Grader 1 should receive the object.
 # Object exchange tests
 test_object_exchange:
 	@echo "== test_object_exchange =="
@@ -432,6 +435,8 @@ test_object_exchange:
 	  fi; \
 	}
 
+# This is the 4. Sample Testcase from Task 2
+# If Grader 1 sends an ihaveobject message with the id of a new object, Grader 1 must receive a getobject message with the same object id.
 test_object_exchange2:
 	@echo "== test_object_exchange2 =="
 	@{ \
@@ -506,7 +511,9 @@ test_transaction_invalidation:
 	}
 
 # Gossiping test - requires two connections
-test_gossiping:
+# This is the third Sample Testcase from Task 2
+# I Grader 1 sends a new valid transaction object, Grader 2 must receive an ihaveobject message with the object id.
+test_gossiping_ihaveobject:
 	@echo "== test_gossiping =="
 	@{ \
 	  mkfifo /tmp/grader2_pipe 2>/dev/null || true; \
@@ -535,6 +542,51 @@ test_gossiping:
 	    exit 1; \
 	  fi; \
 	}
+
+##
+# If Grader 1 sends a new valid transaction object and then Grader 2 requests the same object, Grader 2 should receive the object
+# This is the second Sample Testcase from Task 2
+test_send_object_after_gossip_request:
+	@echo "== test_gossiping =="
+	@{ \
+	  mkfifo /tmp/grader2_pipe 2>/dev/null || true; \
+	  { \
+	    printf '{"agent":"grader2","type":"hello","version":"0.10.0"}\n'; \
+	    sleep 2; \
+		printf '{"type":"getobject","objectid":"61fa6f6cf2e98f065ff04d478ef9694bedb53e2749d43d28cb162bc43207e48e"}\n'; \
+		sleep 2; \
+	  } | nc -v -w 15 localhost 18018 > /tmp/grader2_output & \
+	  GRADER2_PID=$$!; \
+	  sleep 1; \
+	  { \
+	    printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
+	    sleep 0.2; \
+	    printf '{"type":"object","object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":500000000}],"type":"transaction"}}\n'; \
+	    sleep 2; \
+	  } | nc -v -w 5 localhost 18018 >/dev/null; \
+	  sleep 3; \
+	  kill $$GRADER2_PID 2>/dev/null || true; \
+	  if grep -q '"type":"ihaveobject"' /tmp/grader2_output; then \
+	    echo "✓ Transaction gossiped to Grader 2"; \
+	  else \
+	    echo "✗ Transaction not gossiped to Grader 2"; \
+	    cat /tmp/grader2_output; \
+	    rm -f /tmp/grader2_output /tmp/grader2_pipe; \
+	    exit 1; \
+	  fi; \
+	  if grep -q '"type":"object"' /tmp/grader2_output; then \
+	    echo "✓ Grader 2 received the object upon request"; \
+	    rm -f /tmp/grader2_output /tmp/grader2_pipe; \
+	    exit 0; \
+	  else \
+	    echo "✗ Grader 2 did not receive the object upon request"; \
+	    cat /tmp/grader2_output; \
+	    rm -f /tmp/grader2_output /tmp/grader2_pipe; \
+	    exit 1; \
+	  fi; \
+	}
+
+
 # don't touch these targets 
 docker-build:
 	docker-compose build
