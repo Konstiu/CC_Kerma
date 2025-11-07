@@ -362,7 +362,15 @@ run-tests-task2: run-tests
 	make test_transaction_validation
 	make test_transaction_invalidation
 	make test_gossiping_ihaveobject
+	make test_tx_error_specific
+	make test_tx_valid_coinbase 
+	make test_tx_missing_outputs 
+#	make test_tx_bad_pubkey 
+	make test_tx_unknown_input
+	make test_tx_gossip_on_valid
+	make test_tx_no_gossip_on_invalid
 	make test_send_object_after_gossip_request
+
 
 # Peer validation tests
 test_peer_validation:
@@ -526,7 +534,7 @@ test_gossiping_ihaveobject:
 	  { \
 	    printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
 	    sleep 0.2; \
-	    printf '{"type":"object","object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":500000000000}],"type":"transaction"}}\n'; \
+	    printf '{"type":"object","object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":100000000000}],"type":"transaction"}}\n'; \
 	    sleep 2; \
 	  } | nc -v -w 5 localhost 18018 >/dev/null; \
 	  sleep 1; \
@@ -553,7 +561,7 @@ test_send_object_after_gossip_request:
 	  { \
 	    printf '{"agent":"grader2","type":"hello","version":"0.10.0"}\n'; \
 	    sleep 2; \
-		printf '{"type":"getobject","objectid":"61fa6f6cf2e98f065ff04d478ef9694bedb53e2749d43d28cb162bc43207e48e"}\n'; \
+		printf '{"type":"getobject","objectid":"e94969421da0fa3bf603aa10b81bfc23cc7c75ecba8385ed3bb785e8d0bcb4e5"}\n'; \
 		sleep 2; \
 	  } | nc -v -w 15 localhost 18018 > /tmp/grader2_output & \
 	  GRADER2_PID=$$!; \
@@ -561,7 +569,7 @@ test_send_object_after_gossip_request:
 	  { \
 	    printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
 	    sleep 0.2; \
-	    printf '{"type":"object","object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":500000000}],"type":"transaction"}}\n'; \
+	    printf '{"type":"object","object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":800000000}],"type":"transaction"}}\n'; \
 	    sleep 2; \
 	  } | nc -v -w 5 localhost 18018 >/dev/null; \
 	  sleep 3; \
@@ -585,6 +593,187 @@ test_send_object_after_gossip_request:
 	    exit 1; \
 	  fi; \
 	}
+
+#
+# ==================================================
+#     Here start the transaction validation tests:
+# ==================================================
+#
+
+
+test_tx_error_specific:
+	@echo "== test_tx_error_specific =="
+	@{ \
+	  printf '{"agent":"tx-tester","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"type":"transaction","height":0}}\n'; \
+	  sleep 0.5; \
+	} | nc -v -w 5 localhost 18018 > /tmp/tx_error_specific.out
+	@if grep -q '"type":"error"' /tmp/tx_error_specific.out; then \
+	  if grep -q 'JSON parse error' /tmp/tx_error_specific.out; then \
+	    echo "✗ Only got JSON parse error (server still choking on input)"; \
+	    cat /tmp/tx_error_specific.out; \
+	    rm -f /tmp/tx_error_specific.out; \
+	    exit 1; \
+	  else \
+	    echo "✓ Got a specific validation error (not just JSON parse error)"; \
+	    cat /tmp/tx_error_specific.out; \
+	    rm -f /tmp/tx_error_specific.out; \
+	  fi; \
+	else \
+	  echo "✗ Did not get any error back"; \
+	  cat /tmp/tx_error_specific.out; \
+	  rm -f /tmp/tx_error_specific.out; \
+	  exit 1; \
+	fi
+
+
+test_tx_valid_coinbase:
+	@echo "== test_tx_valid_coinbase =="
+	@{ \
+	  printf '{"agent":"tx-tester","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"type":"transaction","height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":5000000}]}}\n'; \
+	  sleep 0.5; \
+	} | nc -v -w 5 localhost 18018 > /tmp/tx_valid_coinbase.out
+	@grep -v "JSON parse error" /tmp/tx_valid_coinbase.out > /tmp/tx_valid_coinbase.filtered || true
+	@if grep -q '"type":"error"' /tmp/tx_valid_coinbase.filtered; then \
+		echo "✗ Node rejected valid coinbase tx"; \
+		cat /tmp/tx_valid_coinbase.filtered; \
+		rm -f /tmp/tx_valid_coinbase.out /tmp/tx_valid_coinbase.filtered; \
+		exit 1; \
+	else \
+	  echo "✓ Node accepted valid coinbase tx"; \
+	  rm -f /tmp/tx_valid_coinbase.out /tmp/tx_valid_coinbase.filtered; \
+	fi
+
+
+test_tx_missing_outputs:
+	@echo "== test_tx_missing_outputs =="
+	@{ \
+	  printf '{"agent":"tx-tester","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"type":"transaction","height":0}}\n'; \
+	  sleep 0.5; \
+	} | nc -v -w 5 localhost 18018 > /tmp/tx_missing_outputs.out 2>&1
+	@grep -v "JSON parse error" /tmp/tx_missing_outputs.out > /tmp/tx_missing_outputs.filtered || true 
+	@if grep -q '"type":"error"' /tmp/tx_missing_outputs.filtered; then \
+	  echo "✓ Node rejected tx without outputs (expected)"; \
+	  cat /tmp/tx_missing_outputs.filtered; \
+	  rm -f /tmp/tx_missing_outputs.out /tmp/tx_missing_outputs.filtered; \
+	else \
+	  echo "✗ Node did NOT reject tx without outputs"; \
+	  cat /tmp/tx_missing_outputs.filtered; \
+	  rm -f /tmp/tx_missing_outputs.out /tmp/tx_missing_outputs.filtered; \
+	  exit 1; \
+	fi
+
+
+test_tx_unknown_input:
+	@echo "== test_tx_unknown_input =="
+	@{ \
+	  printf '{"agent":"tx-tester","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","index":0},"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}],"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":1000}]}}\n'; \
+	  sleep 0.5; \
+	} | nc -v -w 5 localhost 18018 > /tmp/tx_unknown_input.out
+	@if grep -q '"type":"error"' /tmp/tx_unknown_input.out; then \
+	  echo "✓ Node rejected tx with unknown input (expected)"; \
+	  cat /tmp/tx_unknown_input.out; \
+	  rm -f /tmp/tx_unknown_input.out; \
+	else \
+	  echo "✗ Node did NOT reject tx with unknown input"; \
+	  cat /tmp/tx_unknown_input.out; \
+	  rm -f /tmp/tx_unknown_input.out; \
+	  exit 1; \
+	fi
+
+
+test_tx_no_gossip_on_invalid:
+	@echo "== test_tx_no_gossip_on_invalid =="
+	@{ \
+	  # Grader 2: just connect and wait to see if we get a gossip msg \
+	  printf '{"agent":"grader2","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 4; \
+	} | nc -v -w 10 localhost 18018 > /tmp/invalid_grader2.out 2>&1 & \
+	GRADER2_PID=$$!; \
+	sleep 1; \
+	{ \
+	  # Grader 1: send hello + INVALID transaction (missing outputs) \
+	  printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"type":"transaction","height":0}}\n'; \
+	  sleep 0.5; \
+	} | nc -v -w 5 localhost 18018 > /tmp/invalid_grader1.out 2>&1; \
+	# give the node a moment to possibly (wrongly) gossip \
+	sleep 1; \
+	kill $$GRADER2_PID 2>/dev/null || true; \
+	# filter out the JSON parse noise \
+	grep -v "JSON parse error" /tmp/invalid_grader1.out > /tmp/invalid_grader1.filtered || true; \
+	grep -v "JSON parse error" /tmp/invalid_grader2.out > /tmp/invalid_grader2.filtered || true; \
+	# 1) Grader 1 MUST get an error \
+	if grep -q '"type":"error"' /tmp/invalid_grader1.filtered; then \
+	  echo "✓ Sender (Grader 1) received error for invalid tx"; \
+	else \
+	  echo "✗ Sender (Grader 1) did NOT receive error for invalid tx"; \
+	  cat /tmp/invalid_grader1.filtered; \
+	  rm -f /tmp/invalid_grader*.out /tmp/invalid_grader*.filtered; \
+	  exit 1; \
+	fi; \
+	# 2) Grader 2 MUST NOT see ihaveobject \
+	if grep -q '"type":"ihaveobject"' /tmp/invalid_grader2.filtered; then \
+	  echo "✗ Invalid tx was gossiped to Grader 2 (must NOT happen)"; \
+	  cat /tmp/invalid_grader2.filtered; \
+	  rm -f /tmp/invalid_grader*.out /tmp/invalid_grader*.filtered; \
+	  exit 1; \
+	else \
+	  echo "✓ Invalid tx was NOT gossiped to Grader 2"; \
+	fi; \
+	rm -f /tmp/invalid_grader*.out /tmp/invalid_grader*.filtered; \
+	exit 0
+
+
+test_tx_gossip_on_valid:
+	@echo "== test_tx_gossip_on_valid =="
+	@{ \
+	  # Grader 2: wait to receive gossip \
+	  printf '{"agent":"grader2","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 4; \
+	} | nc -v -w 10 localhost 18018 > /tmp/valid_grader2.out 2>&1 & \
+	GRADER2_PID=$$!; \
+	sleep 1; \
+	{ \
+	  # Grader 1: send hello + VALID transaction \
+	  printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"type":"transaction","height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":500000000}]}}\n'; \
+	  sleep 0.5; \
+	} | nc -v -w 5 localhost 18018 > /tmp/valid_grader1.out 2>&1; \
+	sleep 1; \
+	kill $$GRADER2_PID 2>/dev/null || true; \
+	grep -v "JSON parse error" /tmp/valid_grader1.out > /tmp/valid_grader1.filtered || true; \
+	grep -v "JSON parse error" /tmp/valid_grader2.out > /tmp/valid_grader2.filtered || true; \
+	# 1) Grader 1 MUST NOT get an error \
+	if grep -q '"type":"error"' /tmp/valid_grader1.filtered; then \
+	  echo "✗ Sender (Grader 1) got an error for a valid tx"; \
+	  cat /tmp/valid_grader1.filtered; \
+	  rm -f /tmp/valid_grader*.out /tmp/valid_grader*.filtered; \
+	  exit 1; \
+	else \
+	  echo "✓ Sender (Grader 1) did NOT get an error (good)"; \
+	fi; \
+	# 2) Grader 2 MUST get ihaveobject \
+	if grep -q '"type":"ihaveobject"' /tmp/valid_grader2.filtered; then \
+	  echo "✓ Valid tx was gossiped to Grader 2"; \
+	  cat /tmp/valid_grader2.filtered; \
+	  rm -f /tmp/valid_grader*.out /tmp/valid_grader*.filtered; \
+	  exit 0; \
+	else \
+	  echo "✗ Valid tx was NOT gossiped to Grader 2"; \
+	  cat /tmp/valid_grader2.filtered; \
+	  rm -f /tmp/valid_grader*.out /tmp/valid_grader*.filtered; \
+	  exit 1; \
+	fi
 
 
 # don't touch these targets 
