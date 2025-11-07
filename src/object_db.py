@@ -33,7 +33,7 @@ def get_object(objid):
     """Retrieve an object by its ID"""
     with _get_connection() as con:
         cur = con.cursor()
-        cur.execute("SELECT data FROM objects WHERE id = ?", (objid,))
+        cur.execute("SELECT object FROM objects WHERE id = ?", (objid,))
         row = cur.fetchone()
         if row:
             return json.loads(row[0])
