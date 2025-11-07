@@ -14,6 +14,7 @@ def main():
                 object BLOB NOT NULL
             )"""
         )
+        con.commit()
 
         # TODO - Preload genesis block
 
