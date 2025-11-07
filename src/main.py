@@ -321,7 +321,14 @@ def validate_getobject_msg(msg_dict):
 
 # raise an exception if not valid
 def validate_object_msg(msg_dict):
-    pass  # TODO
+    try: 
+        if msg_dict["type"] != "object":
+            raise ErrorInvalidFormat("Message type is not 'object'!")
+        objects.validate_object(msg_dict["object"])
+
+    except ErrorInvalidFormat as e:
+        raise e
+    #pass  # TODO
 
 
 # raise an exception if not valid
@@ -447,41 +454,29 @@ async def del_verify_block_task(task, objid):
 
 # what to do when an object message arrives
 async def handle_object_msg(msg_dict, peer_self, writer):
-    try:
-        # Validate the message structure
-        if "object" not in msg_dict:
-            raise ErrorInvalidFormat("Message malformed: object is missing!")
-        
-        obj_dict = msg_dict["object"]
-        
-        # Validate the object itself (syntactic checks)
-        objects.validate_object(obj_dict)
-        
-        # Get the object ID
-        objid = objects.get_objid(obj_dict)
-        
-        # Check if we already have it
-        if object_db.has_object(objid):
-            print(f"{peer_self}: Already have object {objid}")
-            return
+    validate_object_msg(msg_dict)
+    obj_dict = msg_dict["object"]
+    # Validate the object itself (syntactic checks)
+    objects.validate_object(obj_dict)
+    # Get the object ID
+    objid = objects.get_objid(obj_dict)
 
-        # Store the object
-        object_db.store_object(obj_dict)
-        print(f"{peer_self}: Stored new object {objid}")
-        
-        # Gossip to all other connected peers (except the one who sent it)
-        ihaveobject_msg = mk_ihaveobject_msg(objid)
-        for peer, queue in CONNECTIONS.items():
-            # Don't send back to the peer who sent us this object
-            peer_tuple = (peer.host, peer.port)
-            if peer_tuple != peer_self:
-                await queue.put(ihaveobject_msg)
-        
-    except ErrorInvalidFormat as e:
-        raise e
-    except Exception as e:
-        raise ErrorInvalidFormat(f"Object message handling failed: {str(e)}")   #pass  # TODO
+    # Check if we already have it
+    if object_db.has_object(objid):
+        print(f"{peer_self}: Already have object {objid}")
+        return
 
+    # Store the object
+    object_db.store_object(obj_dict)
+    print(f"{peer_self}: Stored new object {objid}")
+
+    # Gossip to all other connected peers (except the one who sent it)
+    ihaveobject_msg = mk_ihaveobject_msg(objid)
+    for peer, queue in CONNECTIONS.items():
+        peer_tuple = (peer.host, peer.port)
+        if peer_tuple != peer_self:
+            await queue.put(ihaveobject_msg)
+    await write_msg(writer, mk_ihaveobject_msg(objid))
 
 # returns the chaintip blockid
 def get_chaintip_blockid():
@@ -506,7 +501,8 @@ async def handle_mempool_msg(msg_dict):
 
 # Helper function
 async def handle_queue_msg(msg_dict, writer):
-    pass  # TODO
+    await write_msg(writer, msg_dict)
+    #pass  # TODO
 
 
 # how to handle a connection
