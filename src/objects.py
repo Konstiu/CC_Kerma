@@ -211,7 +211,7 @@ def validate_transaction(trans_dict):
     validate_standard_transaction(trans_dict)
 
 def validate_block(block_dict):
-    raise ErrorInvalidFormat("Block validation not yet implemented")
+    raise ErrorUnknownObject("Block validation not yet implemented")
 
 def validate_object(obj_dict):
     if not isinstance(obj_dict, dict):
@@ -224,7 +224,7 @@ def validate_object(obj_dict):
     elif obj_type == "block":
         validate_block(obj_dict)
     else:
-      raise ErrorInvalidFormat("Unknown object type")
+      raise ErrorUnknownObject("Unknown object type")
 
 def get_objid(obj_dict):
     msgbytes = canonicalize(obj_dict)

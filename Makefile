@@ -139,16 +139,10 @@ invalid_before_hello:
 	  echo "← Line 2: $$line2"; \
 	  IFS= read -r line3; \
 	  echo "← Line 3: $$line3"; \
-	  if echo "$$line3" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	    echo "✓ Received error"; \
-	    if echo "$$line3" | grep -q 'INVALID_HANDSHAKE'; then \
-	      echo "✓ Error is INVALID_HANDSHAKE"; \
-	    else \
-	      echo "✗ Error is not INVALID_HANDSHAKE"; \
-	      exit 1; \
-	    fi; \
+	  if echo "$$line3" | jq -e '.type == "error" and .name == "INVALID_HANDSHAKE"' > /dev/null 2>&1; then \
+	    echo "✓ Error is INVALID_HANDSHAKE"; \
 	  else \
-	    echo "✗ No error received"; \
+	    echo "✗ Error is not INVALID_HANDSHAKE"; \
 	    exit 1; \
 	  fi; \
 	}
@@ -165,16 +159,10 @@ invalid_garbage:
 	  IFS= read -r line2; \
 	  IFS= read -r line3; \
 	  echo "← Line 3: $$line3"; \
-	  if echo "$$line3" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	    echo "✓ Received error"; \
-	    if echo "$$line3" | grep -q 'INVALID_FORMAT'; then \
-	      echo "✓ Error is INVALID_FORMAT"; \
-	    else \
-	      echo "✗ Error is not INVALID_FORMAT"; \
-	      exit 1; \
-	    fi; \
+	  if echo "$$line3" | jq -e '.type == "error" and .name == "INVALID_FORMAT"' > /dev/null 2>&1; then \
+	    echo "✓ Error is INVALID_FORMAT"; \
 	  else \
-	    echo "✗ No error received"; \
+	    echo "✗ Error is not INVALID_FORMAT"; \
 	    exit 1; \
 	  fi; \
 	}
@@ -189,16 +177,10 @@ invalid_hello_missing_version:
 	  IFS= read -r line2; \
 	  IFS= read -r line3; \
 	  echo "← Line 3: $$line3"; \
-	  if echo "$$line3" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	    echo "✓ Received error"; \
-		if echo "$$line3" | grep -E -q 'INVALID_FORMAT'; then \
-	      echo "✓ Error type is valid"; \
-	    else \
-	      echo "✗ Wrong error type"; \
-	      exit 1; \
-	    fi; \
+	  if echo "$$line3" | jq -e '.type == "error" and .name == "INVALID_FORMAT"' > /dev/null 2>&1; then \
+	    echo "✓ Error type is INVALID_FORMAT"; \
 	  else \
-	    echo "✗ No error received"; \
+	    echo "✗ Wrong error type"; \
 	    exit 1; \
 	  fi; \
 	}
@@ -213,16 +195,10 @@ invalid_hello_nonnumeric_version:
 	  IFS= read -r line2; \
 	  IFS= read -r line3; \
 	  echo "← Line 3: $$line3"; \
-	  if echo "$$line3" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	    echo "✓ Received error"; \
-	    if echo "$$line3" | grep -E -q 'INVALID_FORMAT'; then \
-	      echo "✓ Error type is valid"; \
-	    else \
-	      echo "✗ Wrong error type"; \
-	      exit 1; \
-	    fi; \
+	  if echo "$$line3" | jq -e '.type == "error" and .name == "INVALID_FORMAT"' > /dev/null 2>&1; then \
+	    echo "✓ Error type is INVALID_FORMAT"; \
 	  else \
-	    echo "✗ No error received"; \
+	    echo "✗ Wrong error type"; \
 	    exit 1; \
 	  fi; \
 	}
@@ -237,16 +213,10 @@ invalid_hello_wrong_semver:
 	  IFS= read -r line2; \
 	  IFS= read -r line3; \
 	  echo "← Line 3: $$line3"; \
-	  if echo "$$line3" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	    echo "✓ Received error"; \
-	    if echo "$$line3" | egrep -q 'INVALID_(FORMAT|HANDSHAKE)'; then \
-	      echo "✓ Error type is valid"; \
-	    else \
-	      echo "✗ Wrong error type"; \
-	      exit 1; \
-	    fi; \
+	  if echo "$$line3" | jq -e '.type == "error" and (.name == "INVALID_FORMAT" or .name == "INVALID_HANDSHAKE")' > /dev/null 2>&1; then \
+	    echo "✓ Error type is valid"; \
 	  else \
-	    echo "✗ No error received"; \
+	    echo "✗ Wrong error type"; \
 	    exit 1; \
 	  fi; \
 	}
@@ -263,16 +233,10 @@ double_hello:
 	  IFS= read -r line2; \
 	  IFS= read -r line3; \
 	  echo "← Line 3: $$line3"; \
-	  if echo "$$line3" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	    echo "✓ Received error"; \
-	    if echo "$$line3" | grep -q 'INVALID_HANDSHAKE'; then \
-	      echo "✓ Error is INVALID_HANDSHAKE"; \
-	    else \
-	      echo "✗ Error is not INVALID_HANDSHAKE"; \
-	      exit 1; \
-	    fi; \
+	  if echo "$$line3" | jq -e '.type == "error" and .name == "INVALID_HANDSHAKE"' > /dev/null 2>&1; then \
+	    echo "✓ Error is INVALID_HANDSHAKE"; \
 	  else \
-	    echo "✗ No error received"; \
+	    echo "✗ Error is not INVALID_HANDSHAKE"; \
 	    exit 1; \
 	  fi; \
 	}
@@ -359,9 +323,14 @@ run-tests-task2: run-tests
 	make test_peer_validation
 	make test_object_exchange
 	make test_object_exchange2
-# 	make test_transaction_invalidation
-#	make test_transaction_validation
-#	make test_gossiping
+	make test_transaction_invalid_syntax
+	make test_valid_transactions
+	make test_unknown_object
+	make test_transaction_references_unknown_object
+	make test_transaction_invalid_tx_outpoint
+	make test_transaction_invalid_signature
+	make test_transaction_double_spending
+	make test_transaction_invalid_tx_conservation
 
 # Peer validation tests
 test_peer_validation:
@@ -373,13 +342,13 @@ test_peer_validation:
 	} | timeout 3s nc -v -w 5 localhost 18018 | { \
 	  while IFS= read -r line; do \
 	    echo "← $$line"; \
-	    if echo "$$line" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	      if echo "$$line" | grep -q 'INVALID_FORMAT'; then \
-	        echo "✓ Invalid IP rejected"; \
-	        exit 0; \
-	      fi; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_FORMAT"' > /dev/null 2>&1; then \
+	      echo "✓ Invalid IP rejected"; \
+	      exit 0; \
 	    fi; \
 	  done; \
+	  echo "✗ Invalid IP not rejected"; \
+	  exit 1; \
 	}
 
 	# Object exchange tests
@@ -445,43 +414,205 @@ test_object_exchange2:
 	      fi; \
 	    fi; \
 	  done; \
+	  echo "✗ did not receive getobject with expected objectid"; \
 	  exit 1; \
 	}
 
-# Transaction validation tests
-	#	  printf'{"object":{
-	#	"inputs":[{
-	#		"outpoint":{
-	#			"index":0,
-	#			"txid":"cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a72"
-	#		},
-	#		"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644 cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"
-	#	}],
-	#	"outputs":[
-	#		{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},
-	#		{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":51}
-	#	],
-	#	"type":"transaction"
-	#},"type":"object"}'
 
-test_transaction_invalidation:
-	@echo "== test_transaction_invalidation =="
+test_transaction_invalid_syntax:
+	@echo "== test_transaction_invalid_syntax =="
 	@{ \
 	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
 	  sleep 0.2; \
-	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"cc41ac3a9e77cfaaea136e5570c8bdc883d7b5c9c6a9d5ab96d320b443db4a72"},"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644 cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":51}],"type":"transaction"},"type":"object"}\n'; \
-	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  printf '{"type":"object","object":{"unknown_property":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50}],"type":"transaction"}}\n'; \
+	} | timeout 5s nc -v -w 10 localhost 18018 | { \
 	  while IFS= read -r line; do \
 	    echo "← $$line"; \
-	    if echo "$$line" | jq -e '.type == "error"' > /dev/null 2>&1; then \
-	      if echo "$$line" | grep -q 'INVALID_TRANSACTION'; then \
-	        echo "✓ Invalid transaction rejected"; \
-	        exit 0; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_FORMAT"' > /dev/null 2>&1; then \
+	      echo "✓ Received INVALID_FORMAT error"; \
+	      exit 0; \
+	    fi; \
+	  done; \
+	  echo "✗ No error received"; \
+	  exit 1; \
+	}
+
+test_valid_transactions:
+	@echo "== test_valid_transactions =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50000000000000}],"type":"transaction"},"type":"object"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"d46d09138f0251edc32e28f1a744cb0b7286850e4c9c777d7e3c6e459b289347"},"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":49999999999990}],"type":"transaction"},"type":"object"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"getobject","objectid":"d46d09138f0251edc32e28f1a744cb0b7286850e4c9c777d7e3c6e459b289347"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"getobject","objectid":"895ca2bea390b7508f780c7174900a631e73905dcdc6c07a6b61ede2ebd4033f"}\n'; \
+	} | timeout 5s nc -v -w 10 localhost 18018 | { \
+	  seen_first=0; \
+	  seen_second=0; \
+	  expected_first='{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50000000000000}],"type":"transaction"}'; \
+	  expected_first=$$(echo "$$expected_first"); \
+	  expected_second='{"inputs":[{"outpoint":{"index":0,"txid":"d46d09138f0251edc32e28f1a744cb0b7286850e4c9c777d7e3c6e459b289347"},"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":49999999999990}],"type":"transaction"}'; \
+	  expected_second=$$(echo "$$expected_second"); \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "object"' > /dev/null 2>&1; then \
+	      received_obj=$$(echo "$$line" | jq -c '.object'); \
+	      if [ $$seen_first -eq 0 ]; then \
+	        echo "→ Checking first object..."; \
+	        if [ "$$received_obj" = "$$expected_first" ]; then \
+	          echo "✓ First object matches expected"; \
+	          seen_first=1; \
+	          continue; \
+	        else \
+	          echo "✗ First object doesn't match"; \
+	          echo "Expected: $$expected_first"; \
+	          echo "Received: $$received_obj"; \
+	          exit 1; \
+	        fi; \
+	      else \
+	        echo "→ Checking second object..."; \
+	        if [ "$$received_obj" = "$$expected_second" ]; then \
+	          echo "✓ Second object matches expected"; \
+	          seen_second=1; \
+	          exit 0; \
+	        else \
+	          echo "✗ Second object doesn't match"; \
+	          echo "Expected: $$expected_second"; \
+	          echo "Received: $$received_obj"; \
+	          exit 1; \
+	        fi; \
 	      fi; \
 	    fi; \
 	  done; \
+	  if [ $$seen_first -eq 1 ] && [ $$seen_second -eq 1 ]; then \
+	    exit 0; \
+	  else \
+	    echo "✗ Did not receive both expected objects"; \
+	    exit 1; \
+	  fi; \
+	}
+
+test_unknown_object:
+	@echo "== test_transaction_unknown_object =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"getobject","objectid":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "UNKNOWN_OBJECT"' > /dev/null 2>&1; then \
+	      echo "✓ UNKNOWN_OBJECT error received"; \
+	      exit 0; \
+	    fi; \
+	  done; \
+	  echo "✗ UNKNOWN_OBJECT error not received"; \
 	  exit 1; \
 	}
+
+test_transaction_references_unknown_object:
+	@echo "== test_transaction_references_unknown_object =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":51}],"type":"transaction"},"type":"object"}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "UNKNOWN_OBJECT"' > /dev/null 2>&1; then \
+	      echo "✓ Transaction referencing unknown object rejected"; \
+	      exit 0; \
+	    fi; \
+	  done; \
+	  echo "✗ Transaction referencing unknown object not rejected"; \
+	  exit 1; \
+	}
+
+
+test_transaction_invalid_tx_outpoint:
+	@echo "== test_transaction_invalid_tx_outpoint =="
+	@{ \
+      printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50000000000000}],"type":"transaction"},"type":"object"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"inputs":[{"outpoint":{"index":9999,"txid":"d46d09138f0251edc32e28f1a744cb0b7286850e4c9c777d7e3c6e459b289347"},"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":49999999999990}],"type":"transaction"},"type":"object"}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_TX_OUTPOINT"' > /dev/null 2>&1; then \
+	      echo "✓ Invalid transaction with bad outpoint rejected"; \
+	      exit 0; \
+	    fi; \
+	  done; \
+	  echo "✗ INVALID_TX_OUTPOINT error not received"; \
+	  exit 1; \
+	}
+
+test_transaction_invalid_signature:
+	@echo "== test_transaction_invalid_signature =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50000000000000}],"type":"transaction"},"type":"object"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"d46d09138f0251edc32e28f1a744cb0b7286850e4c9c777d7e3c6e459b289347"},"sig":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":49999999999990}],"type":"transaction"},"type":"object"}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_TX_SIGNATURE"' > /dev/null 2>&1; then \
+	      echo "✓ Invalid transaction with bad signature rejected"; \
+	      exit 0; \
+	    fi; \
+	  done; \
+	  echo "✗ INVALID_TX_SIGNATURE error not received"; \
+	  exit 1; \
+	}
+
+
+test_transaction_double_spending:
+	@echo "== test_transaction_double_spending =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"height":0,"outputs":[{"pubkey":"cd90f3df2116b26bca1f2bd30a75e23099d62ad917ae21cde0d0af99ae368e86","value":50000000000000}],"type":"transaction"},"type":"object"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"e3e8ff71785e1bd9b2650acf48ed1a647b72d96862fd80c54fb912ce2d964963"},"sig":"bfe3bc1f04d83b1ee5e918a8913e6c176ebee651eca2d445159d04e4bd56d78fd3d6b8d999b567fb4bae638d3360568cbaab8ac4be6262140f78b7f1a0c71201"},{"outpoint":{"index":0,"txid":"e3e8ff71785e1bd9b2650acf48ed1a647b72d96862fd80c54fb912ce2d964963"},"sig":"bfe3bc1f04d83b1ee5e918a8913e6c176ebee651eca2d445159d04e4bd56d78fd3d6b8d999b567fb4bae638d3360568cbaab8ac4be6262140f78b7f1a0c71201"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":50000000000000},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":50000000000000}],"type":"transaction"},"type":"object"}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_FORMAT"' > /dev/null 2>&1; then \
+	      echo "✓ Double spending transaction rejected"; \
+	      exit 0; \
+	    fi; \
+	  done; \
+	  echo "✗ Double spending rejection not received"; \
+	  exit 1; \
+	}
+
+test_transaction_invalid_tx_conservation:
+	@echo "== test_transaction_invalid_tx_conservation =="
+	@{ \
+	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"height":0,"outputs":[{"pubkey":"85acb336a150b16a9c6c8c27a4e9c479d9f99060a7945df0bb1b53365e98969b","value":50000000000000}],"type":"transaction"},"type":"object"}\n'; \
+	  sleep 0.2; \
+	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"e3e8ff71785e1bd9b2650acf48ed1a647b72d96862fd80c54fb912ce2d964963"},"sig":"375d15b69bab5d884444c79a383c42ba9819e69dd0009084e13b2b8381a3d0c02e4a8bde3f4d5ebba6e90092331ad44358b54e92c099b1c5fd9b752266ae730f"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":50000000000001}],"type":"transaction"},"type":"object"}\n'; \
+	} | timeout 3s nc -v -w 5 localhost 18018 | { \
+	  while IFS= read -r line; do \
+	    echo "← $$line"; \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_TX_CONSERVATION"' > /dev/null 2>&1; then \
+	      echo "✓ Invalid transaction with bad conservation rejected"; \
+	      exit 0; \
+	    fi; \
+	  done; \
+	  echo "✗ INVALID_TX_CONSERVATION error not received"; \
+	  exit 1; \
+	}
+
 # don't touch these targets 
 docker-build:
 	docker-compose build

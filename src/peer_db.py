@@ -1,8 +1,11 @@
 from Peer import Peer
 from typing import Iterable, Set
+import os
 
 PEER_DB_FILE = "peers.csv"
-
+if not os.path.exists(PEER_DB_FILE):
+    with open(PEER_DB_FILE, 'w') as file:
+        file.write("host,port\n")  # header
 
 def store_peer(peer: Peer, existing_peers: Iterable[Peer] = None):
     if existing_peers is None:
