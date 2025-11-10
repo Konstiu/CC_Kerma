@@ -24,7 +24,7 @@ jobs:
       run: docker-compose up -d
 
     - name: Run tests
-      run: make run-tests-task2
+      run: make run-tests
 
     - name: Stop Docker containers
       if: always()

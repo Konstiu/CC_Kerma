@@ -26,6 +26,26 @@ run-tests:
 	make reconnect
 	make concurrency
 	make peers_persistence
+	make test_peer_validation
+	make test_object_exchange
+	make test_object_exchange2
+	make test_transaction_invalid_syntax
+	make test_valid_transactions
+	make test_unknown_object
+	make test_transaction_references_unknown_object
+	make test_transaction_invalid_tx_outpoint
+	make test_transaction_invalid_signature
+	make test_transaction_double_spending
+	make test_transaction_invalid_tx_conservation
+	make test_transaction_validation
+	make test_gossiping_ihaveobject
+	make test_tx_error_specific
+	make test_tx_valid_coinbase 
+	make test_tx_missing_outputs
+	make test_tx_unknown_input
+	make test_tx_gossip_on_valid
+	make test_tx_no_gossip_on_invalid
+	make test_send_object_after_gossip_request
 
 
 # 0) Smoke: connect, see a hello, then send our hello + getpeers and see peers
@@ -318,28 +338,28 @@ peers_persistence:
 	}
 # Add these new test targets after your existing tests
 
-run-tests-task2: run-tests
-	# Task 2 specific tests
-	make test_peer_validation
-	make test_object_exchange
-	make test_object_exchange2
-	make test_transaction_invalid_syntax
-	make test_valid_transactions
-	make test_unknown_object
-	make test_transaction_references_unknown_object
-	make test_transaction_invalid_tx_outpoint
-	make test_transaction_invalid_signature
-	make test_transaction_double_spending
-	make test_transaction_invalid_tx_conservation
-	make test_transaction_validation
-	make test_gossiping_ihaveobject
-	make test_tx_error_specific
-	make test_tx_valid_coinbase 
-	make test_tx_missing_outputs
-	make test_tx_unknown_input
-	make test_tx_gossip_on_valid
-	make test_tx_no_gossip_on_invalid
-	make test_send_object_after_gossip_request
+#run-tests-task2: run-tests
+#	# Task 2 specific tests
+#	make test_peer_validation
+#	make test_object_exchange
+#	make test_object_exchange2
+#	make test_transaction_invalid_syntax
+#	make test_valid_transactions
+#	make test_unknown_object
+#	make test_transaction_references_unknown_object
+#	make test_transaction_invalid_tx_outpoint
+#	make test_transaction_invalid_signature
+#	make test_transaction_double_spending
+#	make test_transaction_invalid_tx_conservation
+#	make test_transaction_validation
+#	make test_gossiping_ihaveobject
+#	make test_tx_error_specific
+#	make test_tx_valid_coinbase 
+#	make test_tx_missing_outputs
+#	make test_tx_unknown_input
+#	make test_tx_gossip_on_valid
+#	make test_tx_no_gossip_on_invalid
+#	make test_send_object_after_gossip_request
 
 
 # Peer validation tests
