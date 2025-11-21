@@ -1,35 +1,33 @@
 from Peer import Peer
+from peers import Peers
 import constants as const
-from message.msgexceptions import (
-    FaultyNodeException,
-    NonfaultyNodeException,
-    ErrorInvalidFormat,
-    ErrorInvalidHandshake,
-)
+from message.msgexceptions import *
 from jcs import canonicalize
-from create_db import create_database
 
 import mempool
-import peer_db
 import objects
-import object_db
+import peers
+import create_db
 
 import asyncio
 import ipaddress
 import json
 import random
 import re
+import sqlite3
 import sys
 
-PEERS = set()
+PEERS = Peers()
 CONNECTIONS = dict()
 BACKGROUND_TASKS = set()
 BLOCK_VERIFY_TASKS = dict()
 BLOCK_WAIT_LOCK = None
 TX_WAIT_LOCK = None
 MEMPOOL = mempool.Mempool(const.GENESIS_BLOCK_ID, {})
-LISTEN_CFG = {"address": const.ADDRESS, "port": const.PORT}
-
+LISTEN_CFG = {
+        "address": const.ADDRESS,
+        "port": const.PORT
+}
 
 # Add peer to your list of peers
 def add_peer(peer):
@@ -46,8 +44,7 @@ def add_peer(peer):
     except:
         pass
 
-    peer_db.store_peer(peer, PEERS)
-    PEERS.add(peer)
+    PEERS.addPeer(peer)
 
 
 # Add connection if not already open
@@ -60,63 +57,50 @@ def add_connection(peer, queue):
 
     CONNECTIONS[p] = queue
 
-
 # Delete connection
 def del_connection(peer):
     ip, port = peer
-    del CONNECTIONS[Peer(ip, port)]
-
+    p = Peer(ip, port)
+    del CONNECTIONS[p]
+    PEERS.removePeer(p)
+    PEERS.save()
 
 # Make msg objects
 def mk_error_msg(error_str, error_name):
     return {"type": "error", "name": error_name, "msg": error_str}
 
-
 def mk_hello_msg():
     return {"type": "hello", "version": const.VERSION, "agent": const.AGENT}
-
 
 def mk_getpeers_msg():
     return {"type": "getpeers"}
 
-
 def mk_peers_msg():
-    pl = [f"{peer}" for peer in PEERS]
+    pl = [f'{peer}' for peer in PEERS.getPeers()]
     if len(pl) > 30:
         pl = random.sample(pl, 30)
     return {"type": "peers", "peers": pl}
 
-
 def mk_getobject_msg(objid):
-    return {"type": "getobject", "objectid": objid}
-    # pass # TODO
-
+    return {"type":"getobject", "objectid":objid}
 
 def mk_object_msg(obj_dict):
-    return {"type": "object", "object": obj_dict}
-    #pass  # TODO
-
+    return {"type":"object", "object":obj_dict}
 
 def mk_ihaveobject_msg(objid):
-    return {"type": "ihaveobject", "objectid": objid}
-    # pass  # TODO
-
+    return {"type":"ihaveobject", "objectid":objid}
 
 def mk_chaintip_msg(blockid):
-    pass  # TODO
-
+    pass # TODO
 
 def mk_mempool_msg(txids):
-    pass  # TODO
-
+    pass # TODO
 
 def mk_getchaintip_msg():
-    pass  # TODO
-
+    pass # TODO
 
 def mk_getmempool_msg():
-    pass  # TODO
-
+    pass # TODO
 
 # parses a message as json. returns decoded message
 def parse_msg(msg_str):
@@ -127,49 +111,49 @@ def parse_msg(msg_str):
 
     if not isinstance(msg, dict):
         raise ErrorInvalidFormat("Received message not a dictionary!")
-    if "type" not in msg:
+    if not 'type' in msg:
         raise ErrorInvalidFormat("Key 'type' not set in message!")
-    if not isinstance(msg["type"], str):
+    if not isinstance(msg['type'], str):
         raise ErrorInvalidFormat("Key 'type' is not a string!")
 
     return msg
-
 
 # Send data over the network as a message
 async def write_msg(writer, msg_dict):
     msg_bytes = canonicalize(msg_dict)
     writer.write(msg_bytes)
-    writer.write(b"\n")
+    writer.write(b'\n')
     await writer.drain()
 
-
 # Check if message contains no invalid keys,
-# raises a MalformedMsgException
+# raises an ErrorInvalidFormat
 def validate_allowed_keys(msg_dict, allowed_keys, msg_type):
     if len(set(msg_dict.keys()) - set(allowed_keys)) != 0:
         raise ErrorInvalidFormat(
-            "Message malformed: {} message contains invalid keys!".format(msg_type)
-        )
+            "Message malformed: {} message contains invalid keys!".format(msg_type))
 
 
 # Validate the hello message
 # raises an exception
 def validate_hello_msg(msg_dict):
-    if msg_dict["type"] != "hello":
+    if msg_dict['type'] != 'hello':
         raise ErrorInvalidHandshake("Message type is not 'hello'!")
 
     try:
-        if "version" not in msg_dict:
-            raise ErrorInvalidFormat("Message malformed: version is missing!")
+        if 'version' not in msg_dict:
+            raise ErrorInvalidFormat(
+                "Message malformed: version is missing!")
 
-        version = msg_dict["version"]
+        version = msg_dict['version']
         if not isinstance(version, str):
-            raise ErrorInvalidFormat("Message malformed: version is not a string!")
+            raise ErrorInvalidFormat(
+                "Message malformed: version is not a string!")
 
-        if not re.compile(r"0\.10\.\d").fullmatch(version):
-            raise ErrorInvalidFormat("Version invalid")
+        if not re.compile('0\.10\.\d').fullmatch(version):
+            raise ErrorInvalidFormat(
+                "Version invalid")
 
-        validate_allowed_keys(msg_dict, ["type", "version", "agent"], "hello")
+        validate_allowed_keys(msg_dict, ['type', 'version', 'agent'], 'hello')
     except ErrorInvalidFormat as e:
         raise e
 
@@ -179,26 +163,25 @@ def validate_hello_msg(msg_dict):
 
 # returns true iff host_str is a valid hostname
 def validate_hostname(host_str):
-    if not re.compile(r"[a-zA-Z\d\.\-\_]{3,50}").fullmatch(host_str):
+    if not re.compile('[a-zA-Z\d\.\-\_]{3,50}').fullmatch(host_str):
         return False
-        # raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not match regex")
-
-    if not re.compile(r".*[a-zA-Z].*").fullmatch(host_str):
+        #raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not match regex")
+    
+    if not re.compile('.*[a-zA-Z].*').fullmatch(host_str):
         return False
-        # raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not contain a letter")
+        #raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not contain a letter")
 
-    if "." not in host_str[1:-1]:
+    if not '.' in host_str[1:-1]:
         return False
         # raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not contain a dot")
-
+    
     return True
-
 
 # returns true iff host_str is a valid ipv4 address
 def validate_ipv4addr(host_str):
-    if not re.compile(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}").fullmatch(host_str):
+    if not re.compile('\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').fullmatch(host_str):
         return False
-
+    
     try:
         ip = ipaddress.IPv4Address(host_str)
     except:
@@ -206,10 +189,9 @@ def validate_ipv4addr(host_str):
 
     return True
 
-
 # returns true iff peer_str is a valid peer address
 def validate_peer_str(peer_str):
-    peer_parts = peer_str.rsplit(":", 1)
+    peer_parts = peer_str.rsplit(':', 1)
     if len(peer_parts) != 2:
         raise ErrorInvalidFormat("No port given")
 
@@ -224,36 +206,35 @@ def validate_peer_str(peer_str):
 
     if port <= 0:
         raise ErrorInvalidFormat("Port too small")
-
+    
     if port > 65535:
         raise ErrorInvalidFormat("Port too high")
 
     if (not validate_hostname(host_str)) and (not validate_ipv4addr(host_str)):
-        raise ErrorInvalidFormat(
-            "Given peer address is neither a hostname nor an ipv4 address"
-        )
+        raise ErrorInvalidFormat("Given peer address is neither a hostname nor an ipv4 address")
 
     return True
-
 
 # raise an exception if not valid
 def validate_peers_msg(msg_dict):
     try:
-        if "peers" not in msg_dict:
+        if 'peers' not in msg_dict:
             raise ErrorInvalidFormat("Message malformed: peers is missing!")
 
-        peers = msg_dict["peers"]
+        peers = msg_dict['peers']
         if not isinstance(peers, list):
-            raise ErrorInvalidFormat("Message malformed: peers is not a list!")
+            raise ErrorInvalidFormat(
+                "Message malformed: peers is not a list!")
 
-        validate_allowed_keys(msg_dict, ["type", "peers"], "peers")
+        validate_allowed_keys(msg_dict, ['type', 'peers'], 'peers')
 
-        if len(msg_dict["peers"]) > 30:
-            raise ErrorInvalidFormat("Too many peers in peers msg")
+        if len(msg_dict['peers']) > 30:
+            raise ErrorInvalidFormat('Too many peers in peers msg')
 
         for p in peers:
             if not isinstance(p, str):
-                raise ErrorInvalidFormat("Message malformed: peer is not a string!")
+                raise ErrorInvalidFormat(
+                    "Message malformed: peer is not a string!")
 
             validate_peer_str(p)
 
@@ -262,111 +243,152 @@ def validate_peers_msg(msg_dict):
     except Exception as e:
         raise ErrorInvalidFormat("Message malformed: {}".format(str(e)))
 
-
 # raise an exception if not valid
 def validate_getpeers_msg(msg_dict):
-    if msg_dict["type"] != "getpeers":
+    if msg_dict['type'] != 'getpeers':
         raise ErrorInvalidFormat("Message type is not 'getpeers'!")
 
-    validate_allowed_keys(msg_dict, ["type"], "getpeers")
-
+    validate_allowed_keys(msg_dict, ['type'], 'getpeers')
 
 # raise an exception if not valid
 def validate_getchaintip_msg(msg_dict):
-    pass  # TODO
-
+    pass # TODO
 
 # raise an exception if not valid
 def validate_getmempool_msg(msg_dict):
-    pass  # TODO
-
+    pass # TODO
 
 # raise an exception if not valid
 def validate_error_msg(msg_dict):
-    pass  # TODO
+    if msg_dict['type'] != 'error':
+        raise ErrorInvalidFormat("Message type is not 'error'!") # assert: false
 
+    try:
+        if 'msg' not in msg_dict:
+            raise ErrorInvalidFormat("Message malformed: msg is missing!")
+
+        msg = msg_dict['msg']
+        if not isinstance(msg, str):
+            raise ErrorInvalidFormat("Message malformed: msg is not a string!")
+
+        if 'name' not in msg_dict:
+            raise ErrorInvalidFormat("Message malformed: name is missing!")
+
+        name = msg_dict['name']
+        if not isinstance(name, str):
+            raise ErrorInvalidFormat("Message malformed: name is not a string!")
+
+        validate_allowed_keys(msg_dict, ['type', 'msg', 'name'], 'error')
+
+    except ErrorInvalidFormat as e:
+        raise e
+    except Exception as e:
+        raise ErrorInvalidFormat("Message malformed: {}".format(str(e)))
 
 # raise an exception if not valid
 def validate_ihaveobject_msg(msg_dict):
-    try:
-        if msg_dict["type"] != "ihaveobject":
-            raise ErrorInvalidFormat("Message type is not 'ihaveobject'!")
+    if msg_dict['type'] != 'ihaveobject':
+        raise ErrorInvalidFormat("Message type is not 'ihaveobject'!") # assert: false
 
-        if "objectid" not in msg_dict:
+    try:
+        if 'objectid' not in msg_dict:
             raise ErrorInvalidFormat("Message malformed: objectid is missing!")
 
-        objid = msg_dict["objectid"]
-        objects.validate_objectid(objid)
+        objectid = msg_dict['objectid']
+        if not isinstance(objectid, str):
+            raise ErrorInvalidFormat("Message malformed: objectid is not a string!")
+
+        if not objects.validate_objectid(objectid):
+            raise ErrorInvalidFormat("Message malformed: objectid invalid!")
+
+        validate_allowed_keys(msg_dict, ['type','objectid'], 'ihaveobject')
 
     except ErrorInvalidFormat as e:
         raise e
-    # pass  # TODO
-
+    except Exception as e:
+        raise ErrorInvalidFormat("Message malformed: {}".format(str(e)))
 
 # raise an exception if not valid
 def validate_getobject_msg(msg_dict):
-    try:
-        if msg_dict["type"] != "getobject":
-            raise ErrorInvalidFormat("Message type is not 'getobject'!")
+    if msg_dict['type'] != 'getobject':
+        raise ErrorInvalidFormat("Message type is not 'getobject'!") # assert: false
 
-        if "objectid" not in msg_dict:
+    try:
+        if 'objectid' not in msg_dict:
             raise ErrorInvalidFormat("Message malformed: objectid is missing!")
 
-        objid = msg_dict["objectid"]
-        objects.validate_objectid(objid)
+        objectid = msg_dict['objectid']
+        if not isinstance(objectid, str):
+            raise ErrorInvalidFormat("Message malformed: objectid is not a string!")
+
+        if not objects.validate_objectid(objectid):
+            raise ErrorInvalidFormat("Message malformed: objectid invalid!")
+
+        validate_allowed_keys(msg_dict, ['type','objectid'], 'getobject')
+
     except ErrorInvalidFormat as e:
         raise e
-    # pass  # TODO
-
+    except Exception as e:
+        raise ErrorInvalidFormat("Message malformed: {}".format(str(e)))
 
 # raise an exception if not valid
 def validate_object_msg(msg_dict):
-    if msg_dict["type"] != "object":
-        raise ErrorInvalidFormat("Message type is not 'object'!")
-    objects.validate_object(msg_dict["object"])
+    if msg_dict['type'] != 'object':
+        raise ErrorInvalidFormat("Message type is not 'object'!") # assert: false
 
+    try:
+        if 'object' not in msg_dict:
+            raise ErrorInvalidFormat("Message malformed: object is missing!")
+
+        obj = msg_dict['object']
+        objects.validate_object(obj)
+
+        validate_allowed_keys(msg_dict, ['type','object'], 'object')
+
+    except ErrorInvalidFormat as e:
+        raise e
+    except Exception as e:
+        raise ErrorInvalidFormat("Message malformed: {}".format(str(e)))
 
 # raise an exception if not valid
 def validate_chaintip_msg(msg_dict):
-    pass  # todo
-
-
+    pass # todo
+    
 # raise an exception if not valid
 def validate_mempool_msg(msg_dict):
-    pass  # todo
-
-
+    pass # todo
+        
 def validate_msg(msg_dict):
-    msg_type = msg_dict["type"]
-    if msg_type == "hello":
+    msg_type = msg_dict['type']
+    if msg_type == 'hello':
         validate_hello_msg(msg_dict)
-    elif msg_type == "getpeers":
+    elif msg_type == 'getpeers':
         validate_getpeers_msg(msg_dict)
-    elif msg_type == "peers":
+    elif msg_type == 'peers':
         validate_peers_msg(msg_dict)
-    elif msg_type == "getchaintip":
+    elif msg_type == 'getchaintip':
         validate_getchaintip_msg(msg_dict)
-    elif msg_type == "getmempool":
+    elif msg_type == 'getmempool':
         validate_getmempool_msg(msg_dict)
-    elif msg_type == "error":
+    elif msg_type == 'error':
         validate_error_msg(msg_dict)
-    elif msg_type == "ihaveobject":
+    elif msg_type == 'ihaveobject':
         validate_ihaveobject_msg(msg_dict)
-    elif msg_type == "getobject":
+    elif msg_type == 'getobject':
         validate_getobject_msg(msg_dict)
-    elif msg_type == "object":
+    elif msg_type == 'object':
         validate_object_msg(msg_dict)
-    elif msg_type == "chaintip":
+    elif msg_type == 'chaintip':
         validate_chaintip_msg(msg_dict)
-    elif msg_type == "mempool":
+    elif msg_type == 'mempool':
         validate_mempool_msg(msg_dict)
     else:
         raise ErrorInvalidFormat("Message type {} not valid!".format(msg_type))
 
 
 def handle_peers_msg(msg_dict):
-    for p in msg_dict["peers"]:
-        peer_parts = p.rsplit(":", 1)
+    for p in msg_dict['peers']:
+        peer_parts = p.rsplit(':', 1)
 
         host_str, port_str = peer_parts
 
@@ -374,133 +396,148 @@ def handle_peers_msg(msg_dict):
 
         peer = Peer(host_str, port)
         add_peer(peer)
+    PEERS.save()
 
 
 def handle_error_msg(msg_dict, peer_self):
-    print(
-        "{}: Received error of type {}: {}".format(
-            peer_self, msg_dict["name"], msg_dict["msg"]
-        )
-    )
+    print("{}: Received error of type {}: {}".format(peer_self, msg_dict['name'], msg_dict['msg']))
 
 
 async def handle_ihaveobject_msg(msg_dict, writer):
-    objid = msg_dict["objectid"]
+    objid = msg_dict['objectid']
 
-    we_have_object = object_db.has_object(objid)
-    if not we_have_object:
-        await write_msg(writer, mk_getobject_msg(objid))
-    # pass  # TODO
+    con = sqlite3.connect(const.DB_NAME)
+    try:
+        cur = con.cursor()
+        res = cur.execute("SELECT obj FROM objects WHERE oid = ?", (objid,))
+
+        # already have object
+        if not res.fetchone() is None:
+            return
+    finally:
+        con.close()
+
+    await write_msg(writer, mk_getobject_msg(objid))
 
 
 async def handle_getobject_msg(msg_dict, writer):
-    objid = msg_dict["objectid"]
+    objid = msg_dict['objectid']
+    obj_tuple = None
 
-    we_have_object = object_db.has_object(objid)
-    if we_have_object:
-        object = object_db.get_object(objid)
-        await write_msg(writer, mk_object_msg(object))
-    else:
-        await write_msg(writer, mk_error_msg("Object not known", "UNKNOWN_OBJECT"))
-    #pass  # TODO
+    con = sqlite3.connect(const.DB_NAME)
+    try:
+        cur = con.cursor()
+        res = cur.execute("SELECT obj FROM objects WHERE oid = ?", (objid,))
 
+        obj_tuple = res.fetchone()
+        # don't have object
+        if obj_tuple is None:
+            return
+    finally:
+        con.close()
+
+    obj_dict = objects.expand_object(obj_tuple[0])
+
+    await write_msg(writer, mk_object_msg(obj_dict))
 
 # return a list of transactions that tx_dict references
 def gather_previous_txs(db_cur, tx_dict):
     # coinbase transaction
-    if "height" in tx_dict:
+    if 'height' in tx_dict:
         return {}
 
-    pass  # TODO
+    # regular transaction
+    prev_txs = {}
+    for i in tx_dict['inputs']:
+        ptxid = i['outpoint']['txid']
 
+        res = db_cur.execute("SELECT obj FROM objects WHERE oid = ?", (ptxid,))
+        first_res = res.fetchone()
 
-# get the block, the current utxo and block height
-def get_block_utxo_height(blockid):
-    # TODO
-    block = ""
-    utxo = ""
-    height = ""
-    return (block, utxo, height)
+        if not first_res is None:
+            ptx_str = first_res[0]
+            ptx_dict = objects.expand_object(ptx_str)
 
+            if ptx_dict['type'] != 'transaction':
+                raise ErrorInvalidFormat(f"Transaction attempts to spend from a block")
 
-# get all transactions as a dict txid -> tx from a list of ids
-def get_block_txs(txids):
-    pass  # TODO
+            prev_txs[ptxid] = ptx_dict
 
-
-# Stores for a block its utxoset and height
-def store_block_utxo_height(block, utxo, height: int):
-    pass  # TODO
-
-
-# runs a task to verify a block
-# raises blockverifyexception
-async def verify_block_task(block_dict):
-    pass  # TODO
-
-
-# adds a block verify task to queue and starting it
-def add_verify_block_task(objid, block, queue):
-    pass  # TODO
-
-
-# abort a block verify task
-async def del_verify_block_task(task, objid):
-    pass  # TODO
-
+    return prev_txs
 
 # what to do when an object message arrives
 async def handle_object_msg(msg_dict, peer_self, writer):
-    validate_object_msg(msg_dict)
-
-    # Get the object dict
-    obj_dict = msg_dict["object"]
-    # Get the object ID
+    obj_dict = msg_dict['object']
     objid = objects.get_objid(obj_dict)
+    print(f"Received object with id {objid}: {obj_dict}")
 
-    # Check if we already have it
-    if object_db.has_object(objid):
-        print(f"{peer_self}: Already have object {objid}")
-        return
+    ip_self, port_self = peer_self
+    peer_self_obj = Peer(ip_self, port_self)
 
-    # Store the object
-    object_db.store_object(obj_dict)
-    print(f"{peer_self}: Stored new object {objid}")
+    err_str = None
+    con = sqlite3.connect(const.DB_NAME)
+    try:
+        cur = con.cursor()
+        res = cur.execute("SELECT obj FROM objects WHERE oid = ?", (objid,))
 
-    # Gossip to all other connected peers (except the one who sent it)
-    ihaveobject_msg = mk_ihaveobject_msg(objid)
-    for peer, queue in CONNECTIONS.items():
-        peer_tuple = (peer.host, peer.port)
-        if peer_tuple != peer_self:
-            await queue.put(ihaveobject_msg)
-    await write_msg(writer, mk_ihaveobject_msg(objid))
+        # already have object
+        if not res.fetchone() is None:
+            # object has already been verified as it is in the DB
+            return
+
+        print("Received new object '{}'".format(objid))
+
+        if obj_dict['type'] == 'transaction':
+            prev_txs = gather_previous_txs(cur, obj_dict)
+            objects.verify_transaction(obj_dict, prev_txs)
+        else:
+            # assert: not reached during grading of task 2
+            raise ErrorInvalidFormat("Received an object which is not a transaction, rejecting for now")
+
+        print("Adding new object '{}'".format(objid))
+
+        obj_str = objects.canonicalize(obj_dict).decode('utf-8')
+        cur.execute("INSERT INTO objects VALUES(?, ?)", (objid, obj_str))
+        con.commit()
+    except NodeException as e: # whatever the reason, just reject this
+        con.rollback()
+        print("Failed to verify TX '{}': {}".format(objid, str(e)))
+        raise e # and re-raise this
+    except Exception as e:
+        con.rollback()
+        raise e
+    finally:
+        con.close()
+
+    # gossip the new object to all connections
+    for k, q in CONNECTIONS.items():
+        await q.put(mk_ihaveobject_msg(objid))
+
 
 # returns the chaintip blockid
 def get_chaintip_blockid():
-    pass  # TODO
+    pass # TODO
 
 
 async def handle_getchaintip_msg(msg_dict, writer):
-    pass  # TODO
+    pass # TODO
 
 
 async def handle_getmempool_msg(msg_dict, writer):
-    pass  # TODO
+    pass # TODO
 
 
 async def handle_chaintip_msg(msg_dict):
-    pass  # TODO
+    pass # TODO
 
 
 async def handle_mempool_msg(msg_dict):
-    pass  # TODO
-
+    pass # TODO
 
 # Helper function
 async def handle_queue_msg(msg_dict, writer):
+    # just send whatever another connection requested over the network
     await write_msg(writer, msg_dict)
-    #pass  # TODO
-
 
 # how to handle a connection
 async def handle_connection(reader, writer):
@@ -510,10 +547,10 @@ async def handle_connection(reader, writer):
     peer = None
     queue = asyncio.Queue()
     try:
-        peer = writer.get_extra_info("peername")
+        peer = writer.get_extra_info('peername')
         if not peer:
             raise Exception("Failed to get peername!")
-
+        
         add_connection(peer, queue)
 
         print("New connection with {}".format(peer))
@@ -529,11 +566,10 @@ async def handle_connection(reader, writer):
         # Send initial messages
         await write_msg(writer, mk_hello_msg())
         await write_msg(writer, mk_getpeers_msg())
-
+        
         # Complete handshake
-        firstmsg_str = await asyncio.wait_for(
-            reader.readline(), timeout=const.HELLO_MSG_TIMEOUT
-        )
+        firstmsg_str = await asyncio.wait_for(reader.readline(),
+                timeout=const.HELLO_MSG_TIMEOUT)
         firstmsg = parse_msg(firstmsg_str)
         validate_hello_msg(firstmsg)
 
@@ -545,11 +581,14 @@ async def handle_connection(reader, writer):
                 queue_task = asyncio.create_task(queue.get())
 
             # wait for network or queue messages
-            done, pending = await asyncio.wait(
-                [read_task, queue_task], return_when=asyncio.FIRST_COMPLETED
-            )
+            done, pending = await asyncio.wait([read_task, queue_task],
+                    return_when = asyncio.FIRST_COMPLETED)
             if read_task in done:
                 msg_str = read_task.result()
+                if not msg_str:
+                    # client closed the connection
+                    print(f"{peer} disconnected.")
+                    break
                 read_task = None
             # handle queue messages
             if queue_task in done:
@@ -563,50 +602,48 @@ async def handle_connection(reader, writer):
                 continue
 
             try:
+
                 msg = parse_msg(msg_str)
                 validate_msg(msg)
 
-                msg_type = msg["type"]
-                if msg_type == "hello":
-                    raise ErrorInvalidHandshake(
-                        "Additional handshake initiated by peer!"
-                    )
-                elif msg_type == "getpeers":
+                msg_type = msg['type']
+                if msg_type == 'hello':
+                    raise ErrorInvalidHandshake("Additional handshake initiated by peer!")
+                elif msg_type == 'getpeers':
                     await write_msg(writer, mk_peers_msg())
-                elif msg_type == "peers":
+                elif msg_type == 'peers':
                     handle_peers_msg(msg)
-                elif msg_type == "error":
+                elif msg_type == 'error':
                     handle_error_msg(msg, peer)
-                elif msg_type == "ihaveobject":
+                elif msg_type == 'ihaveobject':
                     await handle_ihaveobject_msg(msg, writer)
-                elif msg_type == "getobject":
+                elif msg_type == 'getobject':
                     await handle_getobject_msg(msg, writer)
-                elif msg_type == "object":
+                elif msg_type == 'object':
                     await handle_object_msg(msg, peer, writer)
-                elif msg_type == "getchaintip":
+                elif msg_type == 'getchaintip':
                     await handle_getchaintip_msg(msg, writer)
-                elif msg_type == "chaintip":
+                elif msg_type == 'chaintip':
                     await handle_chaintip_msg(msg)
-                elif msg_type == "getmempool":
+                elif msg_type == 'getmempool':
                     await handle_getmempool_msg(msg, writer)
-                elif msg_type == "mempool":
+                elif msg_type == 'mempool':
                     await handle_mempool_msg(msg)
                 else:
-                    pass  # assert: false
+                    pass # assert: false
             except NonfaultyNodeException as e:
-                print(
-                    "{}: An error occured: {}: {}".format(peer, e.error_name, e.message)
-                )
+                print("{}: An error occured: {}: {}".format(peer, e.error_name, e.message))
                 await write_msg(writer, mk_error_msg(e.message, e.error_name))
 
     except asyncio.exceptions.TimeoutError:
         print("{}: Timeout".format(peer))
         try:
-            await write_msg(writer, mk_error_msg("INVALID_HANDSHAKE", "Timeout"))
+            await write_msg(writer, mk_error_msg("Timeout in handshake triggered", "INVALID_HANDSHAKE"))
         except:
             pass
     except FaultyNodeException as e:
-        peer_db.remove_peer(peer)
+        PEERS.removePeer(peer)
+        PEERS.save()
         print("{}: Detected Faulty Node: {}: {}".format(peer, e.error_name, e.message))
         try:
             await write_msg(writer, mk_error_msg(e.message, e.error_name))
@@ -626,34 +663,28 @@ async def handle_connection(reader, writer):
 
 async def connect_to_node(peer: Peer):
     try:
-        reader, writer = await asyncio.open_connection(
-            peer.host, peer.port, limit=const.RECV_BUFFER_LIMIT
-        )
+        reader, writer = await asyncio.open_connection(peer.host, peer.port,
+                limit=const.RECV_BUFFER_LIMIT)
     except Exception as e:
         print(f"failed to connect to peer {peer.host}:{peer.port}: {str(e)}")
 
         # remove this peer from your known peers, unless this is a bootstrap peer
         if not peer.isBootstrap:
-            peer_db.remove_peer(peer)
-
+            PEERS.removePeer(peer)
+            PEERS.save()
         return
 
     await handle_connection(reader, writer)
 
 
 async def listen():
-    server = await asyncio.start_server(
-        handle_connection,
-        LISTEN_CFG["address"],
-        LISTEN_CFG["port"],
-        limit=const.RECV_BUFFER_LIMIT,
-    )
+    server = await asyncio.start_server(handle_connection, LISTEN_CFG['address'],
+            LISTEN_CFG['port'], limit=const.RECV_BUFFER_LIMIT)
 
-    print("Listening on {}:{}".format(LISTEN_CFG["address"], LISTEN_CFG["port"]))
+    print("Listening on {}:{}".format(LISTEN_CFG['address'], LISTEN_CFG['port']))
 
     async with server:
         await server.serve_forever()
-
 
 # bootstrap peers. connect to hardcoded peers
 async def bootstrap():
@@ -663,7 +694,6 @@ async def bootstrap():
         BACKGROUND_TASKS.add(t)
         t.add_done_callback(BACKGROUND_TASKS.discard)
 
-
 # connect to some peers
 def resupply_connections():
     cons = set(CONNECTIONS.keys())
@@ -672,7 +702,7 @@ def resupply_connections():
         return
 
     npeers = const.LOW_CONNECTION_THRESHOLD - len(cons)
-    available_peers = PEERS - cons
+    available_peers = PEERS.getPeers() - cons
 
     if len(available_peers) == 0:
         print("Not enough peers available to reconnect.")
@@ -691,16 +721,12 @@ def resupply_connections():
 
 
 async def init():
-
-    # Init database
-    create_database()
-
     global BLOCK_WAIT_LOCK
     BLOCK_WAIT_LOCK = asyncio.Condition()
     global TX_WAIT_LOCK
     TX_WAIT_LOCK = asyncio.Condition()
 
-    # PEERS.update(peer_db.load_peers())
+    PEERS = Peers() # this automatically loads the peers from file
 
     bootstrap_task = asyncio.create_task(bootstrap())
     listen_task = asyncio.create_task(listen())
@@ -720,12 +746,14 @@ async def init():
 
 
 def main():
+    # create the database if it does not yet exist
+    create_db.createDB()
     asyncio.run(init())
 
 
 if __name__ == "__main__":
     if len(sys.argv) == 3:
-        LISTEN_CFG["address"] = sys.argv[1]
-        LISTEN_CFG["port"] = sys.argv[2]
+        LISTEN_CFG['address'] = sys.argv[1]
+        LISTEN_CFG['port'] = sys.argv[2]
 
     main()
