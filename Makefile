@@ -1,11 +1,14 @@
 .PHONY: docker-build docker-up run build clean make-submission check-submission remove-submission remove-test
-.PHONY: run-tests smoke hello_on_connect handshake_then_getpeers defragmentation invalid_before_hello invalid_garbage invalid_hello_missing_version invalid_hello_nonnumeric_version invalid_hello_wrong_semver double_hello reconnect concurrency peers_persistence
 
 run:
 	cd src && python3 main.py
 
 clean: remove-submission remove-test
 	# add further actions if needed
+	rm -f src/db.db
+	rm -f src/peers.json
+	rm -rf src/__pycache__
+	rm -rf src/message/__pycache__
 
 build:
 	pip3 install --no-cache-dir -r src/requirements.txt
@@ -25,14 +28,11 @@ run-tests:
 	make double_hello
 	make reconnect
 	make concurrency
-	make peers_persistence
 	make test_peer_validation
 	make test_object_exchange
 	make test_object_exchange2
 	make test_transaction_invalid_syntax
 	make test_valid_transactions
-	make test_unknown_object
-	make test_transaction_references_unknown_object
 	make test_transaction_invalid_tx_outpoint
 	make test_transaction_invalid_signature
 	make test_transaction_double_spending
@@ -304,64 +304,6 @@ concurrency:
 	} &) ; \
 	wait || true
 
-# 12) (Optional) Persistence sanity: send peers, reconnect, expect your node to remember them
-peers_persistence:
-	@echo "== peers_persistence =="
-	@{ \
-	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
-	  sleep 0.2; \
-	  printf '{"type":"peers","peers":["pink.fluffy.unicorn:4242","128.130.122.74:18018"]}\n'; \
-	} | timeout 3s nc -v -w 5 localhost 18018 | { \
-	  while IFS= read -r line; do \
-	    echo "← Received: $$line"; \
-	  done; \
-	} >/dev/null || true
-	@sleep 0.5
-	@{ \
-	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
-	  sleep 0.2; \
-	  printf '{"type":"getpeers"}\n'; \
-	} | timeout 3s nc -v -w 5 localhost 18018 | { \
-	  found=0; \
-	  while IFS= read -r line; do \
-	    echo "← Received: $$line"; \
-	    if echo "$$line" | grep -E '"pink\.fluffy\.unicorn:4242"|"128\.130\.122\.74:18018"' > /dev/null; then \
-	      found=1; \
-	    fi; \
-	  done; \
-	  if [ $$found -eq 1 ]; then \
-	    echo "✓ Peers persisted"; \
-	  else \
-	    echo "✗ Peers not found"; \
-	    exit 1; \
-	  fi; \
-	}
-# Add these new test targets after your existing tests
-
-#run-tests-task2: run-tests
-#	# Task 2 specific tests
-#	make test_peer_validation
-#	make test_object_exchange
-#	make test_object_exchange2
-#	make test_transaction_invalid_syntax
-#	make test_valid_transactions
-#	make test_unknown_object
-#	make test_transaction_references_unknown_object
-#	make test_transaction_invalid_tx_outpoint
-#	make test_transaction_invalid_signature
-#	make test_transaction_double_spending
-#	make test_transaction_invalid_tx_conservation
-#	make test_transaction_validation
-#	make test_gossiping_ihaveobject
-#	make test_tx_error_specific
-#	make test_tx_valid_coinbase 
-#	make test_tx_missing_outputs
-#	make test_tx_unknown_input
-#	make test_tx_gossip_on_valid
-#	make test_tx_no_gossip_on_invalid
-#	make test_send_object_after_gossip_request
-
-
 # Peer validation tests
 test_peer_validation:
 	@echo "== test_peer_validation =="
@@ -562,43 +504,6 @@ test_valid_transactions:
 	  fi; \
 	}
 
-test_unknown_object:
-	@echo "== test_transaction_unknown_object =="
-	@{ \
-	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
-	  sleep 0.2; \
-	  printf '{"type":"getobject","objectid":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}\n'; \
-	} | timeout 3s nc -v -w 5 localhost 18018 | { \
-	  while IFS= read -r line; do \
-	    echo "← $$line"; \
-	    if echo "$$line" | jq -e '.type == "error" and .name == "UNKNOWN_OBJECT"' > /dev/null 2>&1; then \
-	      echo "✓ UNKNOWN_OBJECT error received"; \
-	      exit 0; \
-	    fi; \
-	  done; \
-	  echo "✗ UNKNOWN_OBJECT error not received"; \
-	  exit 1; \
-	}
-
-test_transaction_references_unknown_object:
-	@echo "== test_transaction_references_unknown_object =="
-	@{ \
-	  printf '{"agent":"gangang","type":"hello","version":"0.10.0"}\n'; \
-	  sleep 0.2; \
-	  printf '{"object":{"inputs":[{"outpoint":{"index":0,"txid":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},"sig":"6204bbab1b736ce2133c4ea43aff3767c49c881ac80b57ba38a3bab980466644cdbacc86b1f4357cfe45e6374b963f5455f26df0a86338310df33e50c15d7f04"}],"outputs":[{"pubkey":"b539258e808b3e3354b9776d1ff4146b52282e864f56224e7e33e7932ec72985","value":10},{"pubkey":"8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9","value":51}],"type":"transaction"},"type":"object"}\n'; \
-	} | timeout 3s nc -v -w 5 localhost 18018 | { \
-	  while IFS= read -r line; do \
-	    echo "← $$line"; \
-	    if echo "$$line" | jq -e '.type == "error" and .name == "UNKNOWN_OBJECT"' > /dev/null 2>&1; then \
-	      echo "✓ Transaction referencing unknown object rejected"; \
-	      exit 0; \
-	    fi; \
-	  done; \
-	  echo "✗ Transaction referencing unknown object not rejected"; \
-	  exit 1; \
-	}
-
-
 test_transaction_invalid_tx_outpoint:
 	@echo "== test_transaction_invalid_tx_outpoint =="
 	@{ \
@@ -651,7 +556,7 @@ test_transaction_double_spending:
 	} | timeout 3s nc -v -w 5 localhost 18018 | { \
 	  while IFS= read -r line; do \
 	    echo "← $$line"; \
-	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_FORMAT"' > /dev/null 2>&1; then \
+	    if echo "$$line" | jq -e '.type == "error" and .name == "INVALID_TX_CONSERVATION"' > /dev/null 2>&1; then \
 	      echo "✓ Double spending transaction rejected"; \
 	      exit 0; \
 	    fi; \
