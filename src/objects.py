@@ -33,7 +33,19 @@ def validate_signature(sig_str):
 
 NONCE_REGEX = re.compile("^[0-9a-f]{64}$")
 def validate_nonce(nonce_str):
-    pass # todo
+    if not isinstance(nonce_str, str):
+        return False
+    return NONCE_REGEX.match(nonce_str)
+
+def validate_ascii_string(s):
+    if not isinstance(s, str):
+        return False
+    if len(s) > 128:
+        return False
+    for c in s:
+        if ord(c) < 32 or ord(c) > 126:
+            return False
+    return True
 
 
 TARGET_REGEX = re.compile("^[0-9a-f]{64}$")
@@ -165,7 +177,50 @@ def validate_transaction(trans_dict):
 
 # syntactic checks
 def validate_block(block_dict):
-    # todo
+    if not isinstance(block_dict, dict):
+        raise ErrorInvalidFormat("Block object invalid: Not a dictionary!")
+    if 'type' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: Type not set!")
+    if not isinstance(block_dict['type'], str):
+        raise ErrorInvalidFormat("Block object invalid: Type not a string!")
+    if not block_dict['type'] == 'block':
+        raise ErrorInvalidFormat("Block object invalid: Type not 'block'!")
+    if 'T' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: T not set!")
+    if not isinstance(block_dict['T'], str):
+        raise ErrorInvalidFormat("Block object invalid: T not a string!")
+    if block_dict['T'] != "0000abc000000000000000000000000000000000000000000000000000000000":
+        raise ErrorInvalidFormat("Block object invalid: T not correct!")
+    if 'created' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: created not set!")
+    if not isinstance(block_dict['created'], int):
+        raise ErrorInvalidFormat("Block object invalid: created not an integer!")
+    if 'nonce' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: nonce not set!")
+    if not validate_nonce(block_dict['nonce']):
+        raise ErrorInvalidFormat("Block object invalid: nonce not syntactically valid!")
+    if 'previd' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: previd not set!")
+    if block_dict['previd'] != None and not validate_objectid(block_dict['previd']):
+        raise ErrorInvalidFormat("Block object invalid: previd not syntactically valid!")
+    if 'txids' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: txids not set!")
+    if not isinstance(block_dict['txids'], list):
+        raise ErrorInvalidFormat("Block object invalid: txids not a list!")
+    for txid in block_dict['txids']:
+        if not validate_objectid(txid):
+            raise ErrorInvalidFormat("Block object invalid: txid in txids not syntactically valid!")
+
+    # validate optional fields
+    if 'miner' in block_dict and not validate_ascii_string(block_dict['miner']):
+        raise ErrorInvalidFormat("Block object invalid: miner is not a valid ascii string!")
+    if 'note' in block_dict and not validate_ascii_string(block_dict['note']):
+        raise ErrorInvalidFormat("Block object invalid: note is not a valid ascii string!")
+    
+    # Validate that there are no additional keys
+    if (len(set(block_dict.keys()) - set(['type', 'T', 'created', 'nonce', 'previd', 'txids', 'miner', 'note'])) != 0):
+        raise ErrorInvalidFormat("Block object invalid: Additional keys present!")
+
     return True
 
 # syntactic checks
@@ -182,7 +237,7 @@ def validate_object(obj_dict):
     if obj_type == 'transaction':
         return validate_transaction(obj_dict)
     elif obj_type == 'block':
-        pass # return validate_block(obj_dict)
+        return validate_block(obj_dict)
 
     raise ErrorInvalidFormat("Object invalid: Unknown object type")
 
@@ -267,6 +322,36 @@ def update_utxo_and_calculate_fee(tx, utxo):
     return 0
 
 # verify that a block is valid in the current chain state, using known transactions txs
+# we know that out block is syntactically valid
+# the block cannot be the genesis block
 def verify_block(block, prev_block, prev_utxo, prev_height, txs):
-    # todo
+    # Check proof of work equation: blockid < T
+    block_id = get_objid(block)
+    if block_id >= block['T']:
+        raise ErrorInvalidBlockPoW("Block does not satisfy proof of work requirement!")
+    
+    # Check created timestamp
+    created_time = block['created']
+    if created_time <= prev_block['created']:
+        raise ErrorInvalidBlockTimestamp("Block created timestamp not greater than previous block's timestamp!")
+    if created_time > int(datetime.now().timestamp()):
+        raise ErrorInvalidBlockTimestamp("Block created timestamp is in the future!")
+
+    # Check all transactions with the utxo set
+    utxo = copy.deepcopy(prev_utxo)
+    for tx in txs:
+        # check that each input of the transaction is in the utxo set
+        # inputs are only on a normal transaction, not coinbase
+        if 'inputs' not in tx:
+            continue
+
+        for input in tx['inputs']:
+            outpoint = input['outpoint']
+            referenced_tx = outpoint['txid']
+            referenced_index = outpoint['index']
+            # CONTINUE HERE
+
+
+
+    
     return 0
