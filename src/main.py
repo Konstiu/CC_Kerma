@@ -486,7 +486,7 @@ def gather_previous_block(db_cur, block_dict):
 
 # get the transactions with the given txids from the database
 # or if they are not in the database, request them from peers
-async def gather_transactions(db_cur, txids):
+async def gather_transactions(db_cur, txids, writer):
     txs = []
     for txid in txids:
         res = db_cur.execute("SELECT obj FROM objects WHERE oid = ?", (txid,))
@@ -510,6 +510,7 @@ async def gather_transactions(db_cur, txids):
         if txid not in PENDING_TXS:
             future = asyncio.get_event_loop().create_future()
             PENDING_TXS[txid] = future
+            await write_msg(writer, mk_getobject_msg(txid))
             # request the object from all connections
             for k, q in CONNECTIONS.items():
                 await q.put(mk_getobject_msg(txid))
@@ -574,7 +575,7 @@ async def handle_object_msg(msg_dict, peer_self, writer):
         elif obj_dict['type'] == 'block':
             prev_block = gather_previous_block(cur, obj_dict)
             (prev_utxo, prev_height) = gather_utxo_and_height(cur, prev_block)
-            transactions = await gather_transactions(cur, obj_dict['txids'])
+            transactions = await gather_transactions(cur, obj_dict['txids'], writer)
             updated_utxo = objects.verify_block(obj_dict, prev_block, prev_utxo, prev_height, transactions)
             height = prev_height + 1
         else:
