@@ -36,7 +36,7 @@ test_valid_block_from_spec:
 	@{ \
 	  { \
 	    printf '{"agent":"grader2","type":"hello","version":"0.10.0"}\n'; \
-	    sleep 10; \
+	    sleep 3; \
 	  } | nc -v -w 15 localhost 18018 > /tmp/grader2_spec_block.out & \
 	  GRADER2_PID=$$!; \
 	  sleep 1; \
@@ -49,7 +49,7 @@ test_valid_block_from_spec:
 	    sleep 1; \
 	  } | nc -v -w 10 localhost 18018 > /tmp/grader1_spec_block.out; \
 	  sleep 1; \
-	  kill $$GRADER2_PID 2>/dev/null || true; \
+	  wait $$GRADER2_PID 2>/dev/null || true; \
 	  if grep -q '"type":"error"' /tmp/grader1_spec_block.out; then \
 	    echo "✗ Example valid block rejected"; \
 	    cat /tmp/grader1_spec_block.out; \
