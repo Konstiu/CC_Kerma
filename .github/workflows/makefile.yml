@@ -23,6 +23,9 @@ jobs:
     - name: Start Docker containers
       run: docker-compose up -d
 
+    - name: Clean node store
+      run: make clean 
+
     - name: Run tests
       run: make run-tests
 

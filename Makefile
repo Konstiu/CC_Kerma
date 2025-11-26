@@ -66,7 +66,7 @@ test_valid_block_from_spec:
 	    exit 0; \
 	  else \
 	    echo "✗ Example valid block not gossiped"; \
-	    cat /tmp/grader1_spec_block.out;; \
+	    cat /tmp/grader1_spec_block.out; \
 	    rm -f /tmp/grader1_spec_block.out /tmp/grader2_spec_block.out /tmp/grader2_spec_block; \
 	    exit 1; \
 	  fi; \
