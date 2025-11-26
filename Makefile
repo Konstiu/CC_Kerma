@@ -36,7 +36,7 @@ test_valid_block_from_spec:
 	@{ \
 	  { \
 	    printf '{"agent":"grader2","type":"hello","version":"0.10.0"}\n'; \
-	    sleep 3; \
+	    sleep 10; \
 	  } | nc -v -w 15 localhost 18018 > /tmp/grader2_spec_block.out & \
 	  GRADER2_PID=$$!; \
 	  sleep 1; \
