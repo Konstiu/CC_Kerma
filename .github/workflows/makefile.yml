@@ -17,6 +17,16 @@ jobs:
     - name: Set up Docker Compose
       run: sudo apt-get update && sudo apt-get install -y docker-compose
 
+
+        ### Here we use this to set up python because some testcases were generated with pyhton code and needed deps.
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+    - name: Install Python dependencies
+      run: pip3 install -r src/requirements.txt
+
+
     - name: Build Docker containers
       run: docker-compose build
 
