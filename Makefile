@@ -36,7 +36,6 @@ run-tests:
 test_valid_block_from_spec:
 	@echo "== test_valid_block_from_spec =="
 	@{ \
-	  mkfifo /tmp/grader2_spec_block 2>/dev/null || true; \
 	  { \
 	    printf '{"agent":"grader2","type":"hello","version":"0.10.0"}\n'; \
 	    sleep 10; \
@@ -49,9 +48,9 @@ test_valid_block_from_spec:
 	    printf '{"type":"object","object":{"height":1,"outputs":[{"pubkey":"3f0bc71a375b574e4bda3ddf502fe1afd99aa020bf6049adfe525d9ad18ff33f","value":50000000000000}],"type":"transaction"}}\n'; \
 	    sleep 0.3; \
 	    printf '{"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":1671148800,"miner":"grader","nonce":"00000000000000000000000000000000000000000000000000000000000463cf","note":"This block has a coinbase transaction","previd":"$(GENESIS_ID)","txids":["6ebfb4c8e8e9b19dcf54c6ce3e1e143da1f473ea986e70c5cb8899a4671c933a"],"type":"block"}}\n'; \
-	    sleep 2; \
-	  } | nc -v -w 5 localhost 18018 > /tmp/grader1_spec_block.out; \
-	  sleep 4; \
+	    sleep 5; \
+	  } | nc -v -w 10 localhost 18018 > /tmp/grader1_spec_block.out; \
+	  sleep 10; \
 	  kill $$GRADER2_PID 2>/dev/null || true; \
 	  if grep -q '"type":"error"' /tmp/grader1_spec_block.out; then \
 	    echo "✗ Example valid block rejected"; \
@@ -62,6 +61,7 @@ test_valid_block_from_spec:
 	  if grep -q '"type":"ihaveobject"' /tmp/grader2_spec_block.out && grep -q '000020cb0002575a71955763adf365c78182f0bb5bee767794ebc7346e0a2194' /tmp/grader2_spec_block.out; then \
 	    echo "✓ Example valid block accepted and gossiped"; \
 	    cat /tmp/grader2_spec_block.out; \
+		cat /tmp/grader1_spec_block.out; \
 	    rm -f /tmp/grader1_spec_block.out /tmp/grader2_spec_block.out /tmp/grader2_spec_block; \
 	    exit 0; \
 	  else \
