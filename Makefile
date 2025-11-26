@@ -243,7 +243,7 @@ test_block_utxo_not_exists:
 	} | nc -v -w 5 localhost 18018 > /tmp/block_utxo_$$(date +%s).out
 	@OUTFILE=$$(ls -t /tmp/block_utxo_*.out | head -1); \
 	if grep -q '"type":"error"' $$OUTFILE; then \
-	  if grep -q '"name":"INVALID_TX_OUTPOINT"' $$OUTFILE || grep -q '"name":"UNFINDABLE_OBJECT"' $$OUTFILE; then \
+	  if grep -q '"name":"UNKNOWN_OBJECT"' $$OUTFILE || grep -q '"name":"UNFINDABLE_OBJECT"' $$OUTFILE; then \
 	    echo "✓ Transaction spending non-existent UTXO rejected with correct error"; \
 	    cat $$OUTFILE; \
 	    rm -f $$OUTFILE; \

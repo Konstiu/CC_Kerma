@@ -302,7 +302,7 @@ def verify_transaction(tx_dict, input_txs):
             raise ErrorInvalidFormat("Previous TX '{}' is not a transaction!".format(ptxid))
 
         if ptxidx >= len(ptx_dict['outputs']):
-            raise ErrorInvalidTxOutpoint("Invalid output index in previous TX '{}'!".format(ptxid))
+            raise ErrorUnknownObject("Invalid output index in previous TX '{}'!".format(ptxid))
 
         output = ptx_dict['outputs'][ptxidx]
         if not verify_tx_signature(tx_dict, i['sig'], output['pubkey']):
