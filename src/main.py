@@ -501,6 +501,11 @@ async def gather_transactions(db_cur, txids):
             txs.append(obj_dict)
             continue
 
+
+
+        ###
+        ### Here we pro. have to move it out or add the writer so we can also actually send the messages. right now none are sent. 
+        ###
         # object was not found in the database
         if txid not in PENDING_TXS:
             future = asyncio.get_event_loop().create_future()

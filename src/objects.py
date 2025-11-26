@@ -292,7 +292,8 @@ def verify_transaction(tx_dict, input_txs):
             in_dict[ptxid] = {ptxidx}
 
         if ptxid not in input_txs:
-            raise ErrorUnknownObject(f"Transaction {ptxid} not known")
+            # Here we have to use a different error i think @Lukas
+            raise ErrorInvalidTxOutpoint(f"Transaction {ptxid} not known")
 
         ptx_dict = input_txs[ptxid]
 
