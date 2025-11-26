@@ -569,7 +569,6 @@ async def handle_object_msg(msg_dict, peer_self, writer):
         elif obj_dict['type'] == 'block':
             prev_block = gather_previous_block(cur, obj_dict)
             (prev_utxo, prev_height) = gather_utxo_and_height(cur, prev_block)
-            print("is this reached??")
             transactions = await gather_transactions(cur, obj_dict['txids'])
             updated_utxo = objects.verify_block(obj_dict, prev_block, prev_utxo, prev_height, transactions)
             height = prev_height + 1
