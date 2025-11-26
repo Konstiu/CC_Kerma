@@ -61,6 +61,7 @@ test_valid_block_from_spec:
 	  fi; \
 	  if grep -q '"type":"ihaveobject"' /tmp/grader2_spec_block.out && grep -q '000020cb0002575a71955763adf365c78182f0bb5bee767794ebc7346e0a2194' /tmp/grader2_spec_block.out; then \
 	    echo "✓ Example valid block accepted and gossiped"; \
+		cat /tmp/grader2_spec_block.out
 	    rm -f /tmp/grader1_spec_block.out /tmp/grader2_spec_block.out /tmp/grader2_spec_block; \
 	    exit 0; \
 	  else \
