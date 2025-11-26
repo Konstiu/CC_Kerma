@@ -35,6 +35,7 @@ run-tests:
 # Läuft auf der lecute node nur mit not gossiped - wahrschienlich weil das object dort schon ist.
 test_valid_block_from_spec:
 	@echo "== test_valid_block_from_spec =="
+	@echo "Note: This test requires that the example block is not already known to the node."
 	@{ \
 	  mkfifo /tmp/grader2_spec_block 2>/dev/null || true; \
 	  { \
