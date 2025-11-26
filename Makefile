@@ -265,14 +265,15 @@ test_block_excessive_coinbase:
 	@echo "== test_block_excessive_coinbase =="
 	@{ \
 	  TIMESTAMP=$$(date +%s); \
-	  RAND_PUBKEY=$$(echo "$$TIMESTAMP-excessive" | sha256sum | cut -c1-64); \
+	  RAND_PUBKEY=$$(echo "$$TIMESTAMP-excessive" | openssl dgst -blake2s256 | cut -d' ' -f2 | head -c 64); \
 	  printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
 	  sleep 0.2; \
 	  COINBASE_TX='{"height":'"$$TIMESTAMP"',"outputs":[{"pubkey":"'"$$RAND_PUBKEY"'","value":60000000000000}],"type":"transaction"}'; \
-	  COINBASE_TXID=$$(echo "$$COINBASE_TX" | jq -Sc | sha256sum | cut -d' ' -f1); \
+	  COINBASE_TXID=$$(python3 -c "import sys; sys.path.insert(0, '.'); from jcs import canonicalize; import hashlib; import json; tx = json.loads('$$COINBASE_TX'); print(hashlib.blake2s(canonicalize(tx)).hexdigest())"); \
 	  printf '{"type":"object","object":'"$$COINBASE_TX"'}\n'; \
 	  sleep 0.5; \
-	  printf '{"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":'"$$TIMESTAMP"',"miner":"grader","nonce":"000000000000000000000000000000000000000000000000000000000004e315","previd":"$(GENESIS_ID)","txids":["'"$$COINBASE_TXID"'"],"type":"block"}}\n'; \
+	  BLOCK=$$(python3 mine_block.py "$(GENESIS_ID)" "$$COINBASE_TXID" $$TIMESTAMP "0000abc000000000000000000000000000000000000000000000000000000000" 2>/dev/null); \
+	  printf '{"type":"object","object":'"$$BLOCK"'}\n'; \
 	  sleep 1; \
 	} | nc -v -w 5 localhost 18018 > /tmp/block_coinbase_$$(date +%s).out
 	@OUTFILE=$$(ls -t /tmp/block_coinbase_*.out | head -1); \
@@ -293,6 +294,8 @@ test_block_excessive_coinbase:
 	  rm -f $$OUTFILE; \
 	  exit 1; \
 	fi
+
+
 
 # Test: Block with unknown parent (UNKNOWN_OBJECT error)
 test_block_missing_parent:
@@ -369,6 +372,60 @@ test_block_coinbase_position:
 	@OUTFILE=$$(ls -t /tmp/block_coinbase_pos_*.out | head -1); \
 	cat $$OUTFILE; \
 	rm -f $$OUTFILE
+
+
+
+# Test: Double spend - same UTXO spent in two different transactions
+test_double_spend:
+	@echo "== test_double_spend =="
+	@{ \
+	  TIMESTAMP=$$(date +%s); \
+	  RAND_PUBKEY1=$$(echo "$$TIMESTAMP-double1" | openssl dgst -blake2s256 | cut -d' ' -f2 | head -c 64); \
+	  RAND_PUBKEY2=$$(echo "$$TIMESTAMP-double2" | openssl dgst -blake2s256 | cut -d' ' -f2 | head -c 64); \
+	  RAND_PUBKEY3=$$(echo "$$TIMESTAMP-double3" | openssl dgst -blake2s256 | cut -d' ' -f2 | head -c 64); \
+	  printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  COINBASE_TX='{"height":1,"outputs":[{"pubkey":"'"$$RAND_PUBKEY1"'","value":50000000000000}],"type":"transaction"}'; \
+	  COINBASE_TXID=$$(python3 -c "import sys; sys.path.insert(0, '.'); from jcs import canonicalize; import hashlib; import json; tx = json.loads('$$COINBASE_TX'); print(hashlib.blake2s(canonicalize(tx)).hexdigest())"); \
+	  printf '{"type":"object","object":'"$$COINBASE_TX"'}\n'; \
+	  sleep 0.3; \
+	  BLOCK1=$$(python3 mine_block.py "$(GENESIS_ID)" "$$COINBASE_TXID" $$TIMESTAMP "0000abc000000000000000000000000000000000000000000000000000000000" 2>/dev/null); \
+	  printf '{"type":"object","object":'"$$BLOCK1"'}\n'; \
+	  sleep 0.5; \
+	  BLOCK1_ID=$$(python3 -c "import sys; sys.path.insert(0, '.'); from jcs import canonicalize; import hashlib; import json; block = json.loads('$$BLOCK1'); print(hashlib.blake2s(canonicalize(block)).hexdigest())"); \
+	  TX1='{"inputs":[{"outpoint":{"index":0,"txid":"'"$$COINBASE_TXID"'"},"sig":"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}],"outputs":[{"pubkey":"'"$$RAND_PUBKEY2"'","value":25000000000000}],"type":"transaction"}'; \
+	  TX1_TXID=$$(python3 -c "import sys; sys.path.insert(0, '.'); from jcs import canonicalize; import hashlib; import json; tx = json.loads('$$TX1'); print(hashlib.blake2s(canonicalize(tx)).hexdigest())"); \
+	  printf '{"type":"object","object":'"$$TX1"'}\n'; \
+	  sleep 0.3; \
+	  COINBASE_TX2='{"height":2,"outputs":[{"pubkey":"'"$$RAND_PUBKEY1"'","value":50000000000000}],"type":"transaction"}'; \
+	  COINBASE_TXID2=$$(python3 -c "import sys; sys.path.insert(0, '.'); from jcs import canonicalize; import hashlib; import json; tx = json.loads('$$COINBASE_TX2'); print(hashlib.blake2s(canonicalize(tx)).hexdigest())"); \
+	  printf '{"type":"object","object":'"$$COINBASE_TX2"'}\n'; \
+	  sleep 0.3; \
+	  BLOCK2=$$(python3 mine_block.py "$$BLOCK1_ID" "$$COINBASE_TXID2,$$TX1_TXID" $$(($$TIMESTAMP + 1)) "0000abc000000000000000000000000000000000000000000000000000000000" 2>/dev/null); \
+	  printf '{"type":"object","object":'"$$BLOCK2"'}\n'; \
+	  sleep 0.5; \
+	  TX2='{"inputs":[{"outpoint":{"index":0,"txid":"'"$$COINBASE_TXID"'"},"sig":"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}],"outputs":[{"pubkey":"'"$$RAND_PUBKEY3"'","value":25000000000000}],"type":"transaction"}'; \
+	  printf '{"type":"object","object":'"$$TX2"'}\n'; \
+	  sleep 1; \
+	} | nc -v -w 10 localhost 18018 > /tmp/double_spend_$$(date +%s).out
+	@OUTFILE=$$(ls -t /tmp/double_spend_*.out | head -1); \
+	if grep -q '"type":"error"' $$OUTFILE; then \
+	  if grep -q '"name":"INVALID_TX_OUTPOINT"' $$OUTFILE; then \
+	    echo "✓ Double spend rejected with INVALID_TX_OUTPOINT"; \
+	    cat $$OUTFILE; \
+	    rm -f $$OUTFILE; \
+	  else \
+	    echo "⚠ Double spend rejected but with different error"; \
+	    cat $$OUTFILE; \
+	    rm -f $$OUTFILE; \
+	    exit 1; \
+	  fi; \
+	else \
+	  echo "✗ Double spend not rejected"; \
+	  cat $$OUTFILE; \
+	  rm -f $$OUTFILE; \
+	  exit 1; \
+	fi
 
 
 # don't touch these targets 
