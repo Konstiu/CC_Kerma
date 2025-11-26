@@ -103,16 +103,7 @@ print(f"Länge: {len(signature_hex)} Zeichen")
 
 
 # Object id bekommen
-object_to_get_id_of = {
-        "T":"0000abc000000000000000000000000000000000000000000000000000000000",
-        "created":1671062400,
-        "miner":"Marabu",
-        "nonce":"00000000000000000000000000000000000000000000000000000000005bb0f2",
-        "note":"The New York Times 2022-12-13: Scientists Achieve Nuclear Fusion Breakthrough With Blast of 192 Lasers",
-        "previd": None,
-        "txids":[],
-        "type":"block"
-}
+object_to_get_id_of = {"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":1671148800,"miner":"grader","nonce":"00000000000000000000000000000000000000000000000000000000000463cf","note":"This block has a coinbase transaction","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","txids":["6ebfb4c8e8e9b19dcf54c6ce3e1e143da1f473ea986e70c5cb8899a4671c933a"],"type":"block"}}
 
 
 

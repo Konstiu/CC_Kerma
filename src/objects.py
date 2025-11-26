@@ -316,6 +316,10 @@ class BlockVerifyException(Exception):
     pass
 
 
+# Returns a key as string for the utxo set dictionary
+def utxo_key(txid, index):
+    return f"{txid}:{index}"
+
 # semantic checks
 # verify that a block is valid in the current chain state, using known transactions txs
 # we know that out block is syntactically valid
@@ -353,21 +357,22 @@ def verify_block(block, prev_block, prev_utxo, prev_height, txs):
             outpoint = input['outpoint']
             referenced_tx = outpoint['txid']
             referenced_index = outpoint['index']
+            key_str = utxo_key(referenced_tx, referenced_index)
             # check that the referenced output is in the utxo set
-            if (referenced_tx, referenced_index) not in utxo:
+            if key_str not in utxo:
                 raise ErrorInvalidTxOutpoint("Transaction input references an output not in the UTXO set!")
             # add the value of the referenced output to the sum of inputs
-            referenced_output = utxo[(referenced_tx, referenced_index)]
+            referenced_output = utxo[key_str]
             sum_of_inputs += referenced_output['value']
             # remove the referenced output from the utxo set
-            del utxo[(referenced_tx, referenced_index)]
+            del utxo[key_str]
             
         # add all outputs of the transaction to the utxo set and sum the outputs
         sum_of_outputs = 0
         outputs = tx['outputs']
         txid = get_objid(tx)
         for i in range(len(outputs)):
-            utxo[(txid, i)] = outputs[i]
+            utxo[utxo_key(txid, i)] = outputs[i]
             sum_of_outputs += outputs[i]['value']
 
         # calculate the fee for this transaction
@@ -387,6 +392,6 @@ def verify_block(block, prev_block, prev_utxo, prev_height, txs):
 
         # add the coinbase transaction output to the utxo set
         txid = get_objid(coinbase_tx)
-        utxo[(txid, 0)] = output
+        utxo[utxo_key(txid, 0)] = output
 
     return utxo

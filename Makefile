@@ -48,7 +48,7 @@ test_valid_block_from_spec:
 	    sleep 0.2; \
 	    printf '{"type":"object","object":{"height":1,"outputs":[{"pubkey":"3f0bc71a375b574e4bda3ddf502fe1afd99aa020bf6049adfe525d9ad18ff33f","value":50000000000000}],"type":"transaction"}}\n'; \
 	    sleep 0.3; \
-	    printf '{"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":1671148800,"miner":"grader","nonce":"000000000000000000000000000000000000000000000000000000000004e315","note":"This block has a coinbase transaction","previd":"$(GENESIS_ID)","txids":["6ebfb4c8e8e9b19dcf54c6ce3e1e143da1f473ea986e70c5cb8899a4671c933a"],"type":"block"}}\n'; \
+	    printf '{"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":1671148800,"miner":"grader","nonce":"00000000000000000000000000000000000000000000000000000000000463cf","note":"This block has a coinbase transaction","previd":"$(GENESIS_ID)","txids":["6ebfb4c8e8e9b19dcf54c6ce3e1e143da1f473ea986e70c5cb8899a4671c933a"],"type":"block"}}\n'; \
 	    sleep 2; \
 	  } | nc -v -w 5 localhost 18018 > /tmp/grader1_spec_block.out; \
 	  sleep 1; \
@@ -59,7 +59,7 @@ test_valid_block_from_spec:
 	    rm -f /tmp/grader1_spec_block.out /tmp/grader2_spec_block.out /tmp/grader2_spec_block; \
 	    exit 1; \
 	  fi; \
-	  if grep -q '"type":"ihaveobject"' /tmp/grader2_spec_block.out && grep -q '00004d07d79f728a27ee72334b17425b83e5d59e1f1abad46f9f1936eeb6a517' /tmp/grader2_spec_block.out; then \
+	  if grep -q '"type":"ihaveobject"' /tmp/grader2_spec_block.out && grep -q '000020cb0002575a71955763adf365c78182f0bb5bee767794ebc7346e0a2194' /tmp/grader2_spec_block.out; then \
 	    echo "✓ Example valid block accepted and gossiped"; \
 	    rm -f /tmp/grader1_spec_block.out /tmp/grader2_spec_block.out /tmp/grader2_spec_block; \
 	    exit 0; \

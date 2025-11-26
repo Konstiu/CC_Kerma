@@ -599,6 +599,7 @@ async def handle_object_msg(msg_dict, peer_self, writer):
         PENDING_TXS[objid].set_result(obj_dict)
 
     # gossip the new object to all connections
+    print("Gossiping object '{}' to all connections".format(objid))
     for k, q in CONNECTIONS.items():
         await q.put(mk_ihaveobject_msg(objid))
 
