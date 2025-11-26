@@ -150,7 +150,7 @@ def validate_hello_msg(msg_dict):
             raise ErrorInvalidFormat(
                 "Message malformed: version is not a string!")
 
-        if not re.compile('0\.10\.\d').fullmatch(version):
+        if not re.compile(r'0\.10\.\d').fullmatch(version):
             raise ErrorInvalidFormat(
                 "Version invalid")
 
@@ -164,11 +164,11 @@ def validate_hello_msg(msg_dict):
 
 # returns true iff host_str is a valid hostname
 def validate_hostname(host_str):
-    if not re.compile('[a-zA-Z\d\.\-\_]{3,50}').fullmatch(host_str):
+    if not re.compile(r'[a-zA-Z\d\.\-\_]{3,50}').fullmatch(host_str):
         return False
         #raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not match regex")
     
-    if not re.compile('.*[a-zA-Z].*').fullmatch(host_str):
+    if not re.compile(r'.*[a-zA-Z].*').fullmatch(host_str):
         return False
         #raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not contain a letter")
 
@@ -180,7 +180,7 @@ def validate_hostname(host_str):
 
 # returns true iff host_str is a valid ipv4 address
 def validate_ipv4addr(host_str):
-    if not re.compile('\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').fullmatch(host_str):
+    if not re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').fullmatch(host_str):
         return False
     
     try:
@@ -522,20 +522,21 @@ async def gather_transactions(db_cur, txids):
         
     return txs
 
-# get the saved UTXO set from a block
-def gather_utxo(db_cur, block_dict):
-    previd = block_dict['previd']
+# get the saved UTXO set and height from a block
+def gather_utxo_and_height(db_cur, block_dict):
+    blockid = objects.get_objid(block_dict)
 
-    res = db_cur.execute("SELECT utxo FROM block_utxos WHERE blockid = ?", (previd,))
+    res = db_cur.execute("SELECT utxo, height FROM block_utxos WHERE blockid = ?", (blockid,))
     first_res = res.fetchone()
 
     if first_res is None:
-        raise ErrorUnknownObject(f"Previous block's UTXO not found")
+        raise ErrorUnknownObject(f"Previous block not found")
 
     utxo_str = first_res[0]
     utxo_dict = json.loads(utxo_str)
+    height = first_res[1]
 
-    return utxo_dict
+    return (utxo_dict, height)
 
 # what to do when an object message arrives
 async def handle_object_msg(msg_dict, peer_self, writer):
@@ -559,15 +560,19 @@ async def handle_object_msg(msg_dict, peer_self, writer):
 
         print("Received new object '{}'".format(objid))
 
+        updated_utxo = None
+        height = None
+
         if obj_dict['type'] == 'transaction':
             prev_txs = gather_previous_txs(cur, obj_dict)
             objects.verify_transaction(obj_dict, prev_txs)
         elif obj_dict['type'] == 'block':
             prev_block = gather_previous_block(cur, obj_dict)
-            prev_utxo = gather_utxo(cur, prev_block)
-            prev_height = -1 # todo
+            (prev_utxo, prev_height) = gather_utxo_and_height(cur, prev_block)
+            print("is this reached??")
             transactions = await gather_transactions(cur, obj_dict['txids'])
-            objects.verify_block(obj_dict, prev_block, prev_utxo, prev_height, transactions)
+            updated_utxo = objects.verify_block(obj_dict, prev_block, prev_utxo, prev_height, transactions)
+            height = prev_height + 1
         else:
             # reveiced an unkown object type
             raise ErrorInvalidFormat("Received an object which is not a transaction or a block")
@@ -576,6 +581,9 @@ async def handle_object_msg(msg_dict, peer_self, writer):
 
         obj_str = objects.canonicalize(obj_dict).decode('utf-8')
         cur.execute("INSERT INTO objects VALUES(?, ?)", (objid, obj_str))
+        if updated_utxo is not None and height is not None:
+            utxo_str = json.dumps(updated_utxo)
+            cur.execute("INSERT INTO block_utxos VALUES(?, ?, ?)", (objid, utxo_str, height))
         con.commit()
     except NodeException as e: # whatever the reason, just reject this
         con.rollback()

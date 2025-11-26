@@ -74,3 +74,9 @@ class ErrorUnfindableObject(NonfaultyNodeException):
         self.message = message
         self.error_name = "UNFINDABLE_OBJECT"
         super().__init__(self.message, self.error_name)
+
+class ErrorInvalidBlockCoinbase(FaultyNodeException):
+    def __init__(self, message) -> None:
+        self.message = message
+        self.error_name = "INVALID_BLOCK_COINBASE"
+        super().__init__(self.message, self.error_name)

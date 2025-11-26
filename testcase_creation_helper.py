@@ -104,14 +104,14 @@ print(f"Länge: {len(signature_hex)} Zeichen")
 
 # Object id bekommen
 object_to_get_id_of = {
-    "height": 0,
-    "outputs": [
-        {
-            "pubkey": "cd90f3df2116b26bca1f2bd30a75e23099d62ad917ae21cde0d0af99ae368e86",
-            "value": 50000000000000
-        }
-    ] ,
-    "type": "transaction"
+        "T":"0000abc000000000000000000000000000000000000000000000000000000000",
+        "created":1671062400,
+        "miner":"Marabu",
+        "nonce":"00000000000000000000000000000000000000000000000000000000005bb0f2",
+        "note":"The New York Times 2022-12-13: Scientists Achieve Nuclear Fusion Breakthrough With Blast of 192 Lasers",
+        "previd": None,
+        "txids":[],
+        "type":"block"
 }
 
 

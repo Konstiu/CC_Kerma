@@ -15,7 +15,10 @@ build:
 
 # add own tests if you want
 
-GENESIS_ID := 0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2
+# weird, the ids seem to have changed?
+# i wrote in the discussion forum
+#GENESIS_ID := 0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2
+GENESIS_ID := 00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee
 
 run-tests:
 	make test_valid_block_from_spec

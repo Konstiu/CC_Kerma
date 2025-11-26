@@ -13,25 +13,25 @@ import re
 import constants as const
 
 # perform syntactic checks. returns true iff check succeeded
-OBJECTID_REGEX = re.compile("^[0-9a-f]{64}$")
+OBJECTID_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_objectid(objid_str):
     if not isinstance(objid_str, str):
         return False
     return OBJECTID_REGEX.match(objid_str)
 
-PUBKEY_REGEX = re.compile("^[0-9a-f]{64}$")
+PUBKEY_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_pubkey(pubkey_str):
     if not isinstance(pubkey_str, str):
         return False
     return PUBKEY_REGEX.match(pubkey_str)
 
-SIGNATURE_REGEX = re.compile("^[0-9a-f]{128}$")
+SIGNATURE_REGEX = re.compile(r"^[0-9a-f]{128}$")
 def validate_signature(sig_str):
     if not isinstance(sig_str, str):
         return False
     return SIGNATURE_REGEX.match(sig_str)
 
-NONCE_REGEX = re.compile("^[0-9a-f]{64}$")
+NONCE_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_nonce(nonce_str):
     if not isinstance(nonce_str, str):
         return False
@@ -48,7 +48,7 @@ def validate_ascii_string(s):
     return True
 
 
-TARGET_REGEX = re.compile("^[0-9a-f]{64}$")
+TARGET_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_target(target_str):
     pass # todo
 
@@ -315,15 +315,12 @@ def verify_transaction(tx_dict, input_txs):
 class BlockVerifyException(Exception):
     pass
 
-# apply tx to utxo
-# returns mining fee
-def update_utxo_and_calculate_fee(tx, utxo):
-    # todo
-    return 0
 
+# semantic checks
 # verify that a block is valid in the current chain state, using known transactions txs
 # we know that out block is syntactically valid
 # the block cannot be the genesis block
+# we return the updated utxo set if the block is valid
 def verify_block(block, prev_block, prev_utxo, prev_height, txs):
     # Check proof of work equation: blockid < T
     block_id = get_objid(block)
@@ -337,21 +334,59 @@ def verify_block(block, prev_block, prev_utxo, prev_height, txs):
     if created_time > int(datetime.now().timestamp()):
         raise ErrorInvalidBlockTimestamp("Block created timestamp is in the future!")
 
+    # Check first transaction seperately because it could be coinbase
+    coinbase_tx = None
+    if len(txs) > 0 and 'height' in txs[0]:
+        coinbase_tx = txs.pop()
+
     # Check all transactions with the utxo set
     utxo = copy.deepcopy(prev_utxo)
+    sum_fees = 0
     for tx in txs:
-        # check that each input of the transaction is in the utxo set
-        # inputs are only on a normal transaction, not coinbase
-        if 'inputs' not in tx:
-            continue
+        # if a coinbase transaction is encountered we return an error
+        if 'height' in tx:
+            raise ErrorInvalidBlockCoinbase("Multiple coinbase transactions in block or coinbase transaction is not on first position!")
 
+        # check that each input of the transaction is in the utxo set and sum inputs
+        sum_of_inputs = 0
         for input in tx['inputs']:
             outpoint = input['outpoint']
             referenced_tx = outpoint['txid']
             referenced_index = outpoint['index']
-            # CONTINUE HERE
+            # check that the referenced output is in the utxo set
+            if (referenced_tx, referenced_index) not in utxo:
+                raise ErrorInvalidTxOutpoint("Transaction input references an output not in the UTXO set!")
+            # add the value of the referenced output to the sum of inputs
+            referenced_output = utxo[(referenced_tx, referenced_index)]
+            sum_of_inputs += referenced_output['value']
+            # remove the referenced output from the utxo set
+            del utxo[(referenced_tx, referenced_index)]
+            
+        # add all outputs of the transaction to the utxo set and sum the outputs
+        sum_of_outputs = 0
+        outputs = tx['outputs']
+        txid = get_objid(tx)
+        for i in range(len(outputs)):
+            utxo[(txid, i)] = outputs[i]
+            sum_of_outputs += outputs[i]['value']
 
+        # calculate the fee for this transaction
+        # it should never happen that sum_of_inputs < sum_of_outputs, because that would have been caught in transaction verification, but we check it anyway
+        if sum_of_inputs < sum_of_outputs:
+            raise ErrorInvalidTxConservation("Transaction inputs less than outputs!")
+        fee = sum_of_inputs - sum_of_outputs
+        sum_fees += fee
 
+    # Check the coinbase transaction if it exists
+    if coinbase_tx is not None:
+        if coinbase_tx['height'] != prev_height + 1:
+            raise ErrorInvalidBlockCoinbase("Coinbase transaction height incorrect!")
+        output = coinbase_tx['outputs'][0]
+        if output['value'] > const.BLOCK_REWARD + sum_fees:
+            raise ErrorInvalidBlockCoinbase("Coinbase transaction output value exceeds allowed amount!")
 
-    
-    return 0
+        # add the coinbase transaction output to the utxo set
+        txid = get_objid(coinbase_tx)
+        utxo[(txid, 0)] = output
+
+    return utxo
