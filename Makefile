@@ -51,7 +51,7 @@ test_valid_block_from_spec:
 	    printf '{"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":1671148800,"miner":"grader","nonce":"00000000000000000000000000000000000000000000000000000000000463cf","note":"This block has a coinbase transaction","previd":"$(GENESIS_ID)","txids":["6ebfb4c8e8e9b19dcf54c6ce3e1e143da1f473ea986e70c5cb8899a4671c933a"],"type":"block"}}\n'; \
 	    sleep 2; \
 	  } | nc -v -w 5 localhost 18018 > /tmp/grader1_spec_block.out; \
-	  sleep 1; \
+	  sleep 4; \
 	  kill $$GRADER2_PID 2>/dev/null || true; \
 	  if grep -q '"type":"error"' /tmp/grader1_spec_block.out; then \
 	    echo "✗ Example valid block rejected"; \
