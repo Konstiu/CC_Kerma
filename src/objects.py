@@ -13,30 +13,42 @@ import re
 import constants as const
 
 # perform syntactic checks. returns true iff check succeeded
-OBJECTID_REGEX = re.compile("^[0-9a-f]{64}$")
+OBJECTID_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_objectid(objid_str):
     if not isinstance(objid_str, str):
         return False
     return OBJECTID_REGEX.match(objid_str)
 
-PUBKEY_REGEX = re.compile("^[0-9a-f]{64}$")
+PUBKEY_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_pubkey(pubkey_str):
     if not isinstance(pubkey_str, str):
         return False
     return PUBKEY_REGEX.match(pubkey_str)
 
-SIGNATURE_REGEX = re.compile("^[0-9a-f]{128}$")
+SIGNATURE_REGEX = re.compile(r"^[0-9a-f]{128}$")
 def validate_signature(sig_str):
     if not isinstance(sig_str, str):
         return False
     return SIGNATURE_REGEX.match(sig_str)
 
-NONCE_REGEX = re.compile("^[0-9a-f]{64}$")
+NONCE_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_nonce(nonce_str):
-    pass # todo
+    if not isinstance(nonce_str, str):
+        return False
+    return NONCE_REGEX.match(nonce_str)
+
+def validate_ascii_string(s):
+    if not isinstance(s, str):
+        return False
+    if len(s) > 128:
+        return False
+    for c in s:
+        if ord(c) < 32 or ord(c) > 126:
+            return False
+    return True
 
 
-TARGET_REGEX = re.compile("^[0-9a-f]{64}$")
+TARGET_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_target(target_str):
     pass # todo
 
@@ -165,7 +177,50 @@ def validate_transaction(trans_dict):
 
 # syntactic checks
 def validate_block(block_dict):
-    # todo
+    if not isinstance(block_dict, dict):
+        raise ErrorInvalidFormat("Block object invalid: Not a dictionary!")
+    if 'type' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: Type not set!")
+    if not isinstance(block_dict['type'], str):
+        raise ErrorInvalidFormat("Block object invalid: Type not a string!")
+    if not block_dict['type'] == 'block':
+        raise ErrorInvalidFormat("Block object invalid: Type not 'block'!")
+    if 'T' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: T not set!")
+    if not isinstance(block_dict['T'], str):
+        raise ErrorInvalidFormat("Block object invalid: T not a string!")
+    if block_dict['T'] != "0000abc000000000000000000000000000000000000000000000000000000000":
+        raise ErrorInvalidFormat("Block object invalid: T not correct!")
+    if 'created' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: created not set!")
+    if not isinstance(block_dict['created'], int):
+        raise ErrorInvalidFormat("Block object invalid: created not an integer!")
+    if 'nonce' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: nonce not set!")
+    if not validate_nonce(block_dict['nonce']):
+        raise ErrorInvalidFormat("Block object invalid: nonce not syntactically valid!")
+    if 'previd' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: previd not set!")
+    if block_dict['previd'] != None and not validate_objectid(block_dict['previd']):
+        raise ErrorInvalidFormat("Block object invalid: previd not syntactically valid!")
+    if 'txids' not in block_dict:
+        raise ErrorInvalidFormat("Block object invalid: txids not set!")
+    if not isinstance(block_dict['txids'], list):
+        raise ErrorInvalidFormat("Block object invalid: txids not a list!")
+    for txid in block_dict['txids']:
+        if not validate_objectid(txid):
+            raise ErrorInvalidFormat("Block object invalid: txid in txids not syntactically valid!")
+
+    # validate optional fields
+    if 'miner' in block_dict and not validate_ascii_string(block_dict['miner']):
+        raise ErrorInvalidFormat("Block object invalid: miner is not a valid ascii string!")
+    if 'note' in block_dict and not validate_ascii_string(block_dict['note']):
+        raise ErrorInvalidFormat("Block object invalid: note is not a valid ascii string!")
+    
+    # Validate that there are no additional keys
+    if (len(set(block_dict.keys()) - set(['type', 'T', 'created', 'nonce', 'previd', 'txids', 'miner', 'note'])) != 0):
+        raise ErrorInvalidFormat("Block object invalid: Additional keys present!")
+
     return True
 
 # syntactic checks
@@ -182,7 +237,7 @@ def validate_object(obj_dict):
     if obj_type == 'transaction':
         return validate_transaction(obj_dict)
     elif obj_type == 'block':
-        pass # return validate_block(obj_dict)
+        return validate_block(obj_dict)
 
     raise ErrorInvalidFormat("Object invalid: Unknown object type")
 
@@ -237,6 +292,7 @@ def verify_transaction(tx_dict, input_txs):
             in_dict[ptxid] = {ptxidx}
 
         if ptxid not in input_txs:
+            # Here we have to use a different error i think @Lukas
             raise ErrorUnknownObject(f"Transaction {ptxid} not known")
 
         ptx_dict = input_txs[ptxid]
@@ -246,7 +302,7 @@ def verify_transaction(tx_dict, input_txs):
             raise ErrorInvalidFormat("Previous TX '{}' is not a transaction!".format(ptxid))
 
         if ptxidx >= len(ptx_dict['outputs']):
-            raise ErrorInvalidTxOutpoint("Invalid output index in previous TX '{}'!".format(ptxid))
+            raise ErrorUnknownObject("Invalid output index in previous TX '{}'!".format(ptxid))
 
         output = ptx_dict['outputs'][ptxidx]
         if not verify_tx_signature(tx_dict, i['sig'], output['pubkey']):
@@ -260,13 +316,83 @@ def verify_transaction(tx_dict, input_txs):
 class BlockVerifyException(Exception):
     pass
 
-# apply tx to utxo
-# returns mining fee
-def update_utxo_and_calculate_fee(tx, utxo):
-    # todo
-    return 0
 
+# Returns a key as string for the utxo set dictionary
+def utxo_key(txid, index):
+    return f"{txid}:{index}"
+
+# semantic checks
 # verify that a block is valid in the current chain state, using known transactions txs
+# we know that out block is syntactically valid
+# the block cannot be the genesis block
+# we return the updated utxo set if the block is valid
 def verify_block(block, prev_block, prev_utxo, prev_height, txs):
-    # todo
-    return 0
+    # Check proof of work equation: blockid < T
+    block_id = get_objid(block)
+    if block_id >= block['T']:
+        raise ErrorInvalidBlockPoW("Block does not satisfy proof of work requirement!")
+    
+    # Check created timestamp
+    created_time = block['created']
+    if created_time <= prev_block['created']:
+        raise ErrorInvalidBlockTimestamp("Block created timestamp not greater than previous block's timestamp!")
+    if created_time > int(datetime.now().timestamp()):
+        raise ErrorInvalidBlockTimestamp("Block created timestamp is in the future!")
+
+    # Check first transaction seperately because it could be coinbase
+    coinbase_tx = None
+    if len(txs) > 0 and 'height' in txs[0]:
+        coinbase_tx = txs.pop()
+
+    # Check all transactions with the utxo set
+    utxo = copy.deepcopy(prev_utxo)
+    sum_fees = 0
+    for tx in txs:
+        # if a coinbase transaction is encountered we return an error
+        if 'height' in tx:
+            raise ErrorInvalidBlockCoinbase("Multiple coinbase transactions in block or coinbase transaction is not on first position!")
+
+        # check that each input of the transaction is in the utxo set and sum inputs
+        sum_of_inputs = 0
+        for input in tx['inputs']:
+            outpoint = input['outpoint']
+            referenced_tx = outpoint['txid']
+            referenced_index = outpoint['index']
+            key_str = utxo_key(referenced_tx, referenced_index)
+            # check that the referenced output is in the utxo set
+            if key_str not in utxo:
+                raise ErrorInvalidTxOutpoint("Transaction input references an output not in the UTXO set!")
+            # add the value of the referenced output to the sum of inputs
+            referenced_output = utxo[key_str]
+            sum_of_inputs += referenced_output['value']
+            # remove the referenced output from the utxo set
+            del utxo[key_str]
+            
+        # add all outputs of the transaction to the utxo set and sum the outputs
+        sum_of_outputs = 0
+        outputs = tx['outputs']
+        txid = get_objid(tx)
+        for i in range(len(outputs)):
+            utxo[utxo_key(txid, i)] = outputs[i]
+            sum_of_outputs += outputs[i]['value']
+
+        # calculate the fee for this transaction
+        # it should never happen that sum_of_inputs < sum_of_outputs, because that would have been caught in transaction verification, but we check it anyway
+        if sum_of_inputs < sum_of_outputs:
+            raise ErrorInvalidTxConservation("Transaction inputs less than outputs!")
+        fee = sum_of_inputs - sum_of_outputs
+        sum_fees += fee
+
+    # Check the coinbase transaction if it exists
+    if coinbase_tx is not None:
+        if coinbase_tx['height'] != prev_height + 1:
+            raise ErrorInvalidBlockCoinbase("Coinbase transaction height incorrect!")
+        output = coinbase_tx['outputs'][0]
+        if output['value'] > const.BLOCK_REWARD + sum_fees:
+            raise ErrorInvalidBlockCoinbase("Coinbase transaction output value exceeds allowed amount!")
+
+        # add the coinbase transaction output to the utxo set
+        txid = get_objid(coinbase_tx)
+        utxo[utxo_key(txid, 0)] = output
+
+    return utxo

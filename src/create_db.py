@@ -13,6 +13,14 @@ def createDB():
     try:
         cur = con.cursor()
         cur.execute("CREATE TABLE IF NOT EXISTS objects(oid VARCHAR(64) PRIMARY KEY, obj TEXT NOT NULL)")
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS block_utxos (
+                blockid VARCHAR(64) PRIMARY KEY,
+                utxo TEXT NOT NULL,
+                height INTEGER NOT NULL,
+                FOREIGN KEY (blockid) REFERENCES objects(oid) ON DELETE CASCADE
+            )
+        """)
 
         # Preload genesis block
         res = cur.execute("SELECT obj FROM objects WHERE oid = ?", (const.GENESIS_BLOCK_ID,))
@@ -24,6 +32,7 @@ def createDB():
             gen_str = objects.canonicalize(const.GENESIS_BLOCK).decode('utf-8')
 
             cur.execute("INSERT INTO objects VALUES(?, ?)", (gen_id, gen_str))
+            cur.execute("INSERT INTO block_utxos VALUES(?, ?, ?)", (gen_id, "{}", 0))
 
         con.commit()
 

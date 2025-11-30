@@ -103,16 +103,7 @@ print(f"Länge: {len(signature_hex)} Zeichen")
 
 
 # Object id bekommen
-object_to_get_id_of = {
-    "height": 0,
-    "outputs": [
-        {
-            "pubkey": "cd90f3df2116b26bca1f2bd30a75e23099d62ad917ae21cde0d0af99ae368e86",
-            "value": 50000000000000
-        }
-    ] ,
-    "type": "transaction"
-}
+object_to_get_id_of = {"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":1671148800,"miner":"grader","nonce":"00000000000000000000000000000000000000000000000000000000000463cf","note":"This block has a coinbase transaction","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","txids":["6ebfb4c8e8e9b19dcf54c6ce3e1e143da1f473ea986e70c5cb8899a4671c933a"],"type":"block"}}
 
 
 

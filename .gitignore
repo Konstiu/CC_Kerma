@@ -4,6 +4,7 @@ message/__pycache__
 *.swp
 .vscode/
 peers.csv
+peers.json
 .idea
 Kerma_*
 db.db
