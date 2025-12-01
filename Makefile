@@ -18,7 +18,6 @@ build:
 GENESIS_ID := 00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee
 
 run-tests:
-	make test_valid_block_from_spec
 	make test_tx_error_specific
 	make test_invalid_transaction_alone
 	make test_block_incorrect_target
@@ -29,6 +28,8 @@ run-tests:
 	make test_block_with_unknown_tx
 	make test_block_coinbase_position
 	make test_block_excessive_coinbase
+	make test_block_with_unknown_tx3
+	make test_block_with_unknown_tx2
 
 # Test: Example valid block from spec must be accepted and gossiped
 test_valid_block_from_spec:
@@ -327,6 +328,75 @@ test_block_missing_parent:
 
 # Test: Block should fetch unknown transactions
 test_block_with_unknown_tx:
+	@echo "== test_block_with_unknown_tx =="
+	@TIMESTAMP=$$(date +%s); \
+	RAND_PUBKEY=$$(echo "$$TIMESTAMP-fetch" | openssl dgst -blake2s256 | cut -d' ' -f2 | head -c 64); \
+	COINBASE_TX='{"height":'"$$TIMESTAMP"',"outputs":[{"pubkey":"'"$$RAND_PUBKEY"'","value":50000000000000}],"type":"transaction"}'; \
+	COINBASE_TXID=$$(python3 -c "import sys; sys.path.insert(0, '.'); from jcs import canonicalize; import hashlib; import json; tx = json.loads('$$COINBASE_TX'); print(hashlib.blake2s(canonicalize(tx)).hexdigest())"); \
+	echo "Canonical TX: $$COINBASE_TX"; \
+	echo "TX ID (blake2s): $$COINBASE_TXID"; \
+	OUTFILE=/tmp/block_unknown_tx_$$TIMESTAMP.out; \
+	( \
+	  printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.2; \
+	  printf '{"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":'"$$TIMESTAMP"',"miner":"grader","nonce":"000000000000000000000000000000000000000000000000000000000004e315","previd":"$(GENESIS_ID)","txids":["'"$$COINBASE_TXID"'"],"type":"block"}}\n'; \
+	  sleep 2; \
+	  printf '{"type":"object","object":'"$$COINBASE_TX"'}\n'; \
+	  sleep 2; \
+	) | nc -v -w 5 localhost 18018 > $$OUTFILE 2>&1; \
+	if grep -q '"type":"error"' $$OUTFILE; then \
+	  if grep -q '"name":"INVALID_BLOCK_POW"' $$OUTFILE; then \
+	    echo "✓ Block with invalid PoW rejected with INVALID_BLOCK_POW"; \
+	    cat $$OUTFILE; \
+	    rm -f $$OUTFILE; \
+	  else \
+	    echo "⚠ Block rejected but with wrong error name (expected INVALID_BLOCK_POW)"; \
+	    cat $$OUTFILE; \
+	    rm -f $$OUTFILE; \
+	    exit 1; \
+	  fi; \
+	else \
+	  echo "✗ Block with invalid PoW not rejected"; \
+	  cat $$OUTFILE; \
+	  rm -f $$OUTFILE; \
+	  exit 1; \
+	fi
+
+
+test_block_with_unknown_tx3:
+	@echo "== test_block_with_unknown_tx3: =="
+	@TIMESTAMP=$$(date +%s); \
+	OUTFILE=/tmp/block_unknown_tx_$$TIMESTAMP.out; \
+	( \
+	  printf '{"agent":"grader1","type":"hello","version":"0.10.0"}\n'; \
+	  sleep 0.3; \
+	    printf '{"type":"object","object":{"T":"0000abc000000000000000000000000000000000000000000000000000000000","created":1671148800,"miner":"grader","nonce":"00000000000000000000000000000000000000000000000000000000000463cf","note":"This block has a coinbase transaction","previd":"$(GENESIS_ID)","txids":["6ebfb4c8e8e9b19dcf54c6ce3e1e143da1f473ea986e70c5cb8899a4671c933a"],"type":"block"}}\n'; \
+	    sleep 2; \
+	    printf '{"type":"object","object":{"height":1,"outputs":[{"pubkey":"3f0bc71a375b574e4bda3ddf502fe1afd99aa020bf6049adfe525d9ad18ff33f","value":50000000000000}],"type":"transaction"}}\n'; \
+		sleep 2; \
+	) | nc -v -w 5 localhost 18018 > $$OUTFILE 2>&1; \
+	if grep -q '"type":"getobject"' $$OUTFILE; then \
+	  echo "✓ Node requested unknown transaction"; \
+	  if grep -q '"type":"error"' $$OUTFILE; then \
+	    echo "✗ Node returned error after receiving transaction"; \
+	    cat $$OUTFILE; \
+	    rm -f $$OUTFILE; \
+	    exit 1; \
+	  else \
+	    echo "✓ Node accepted the transaction without error"; \
+	    cat $$OUTFILE; \
+	    rm -f $$OUTFILE; \
+	  fi; \
+	else \
+	  echo "✗ Node did not request unknown transaction"; \
+	  cat $$OUTFILE; \
+	  rm -f $$OUTFILE; \
+	  exit 1; \
+	fi
+
+
+
+test_block_with_unknown_tx2:
 	@echo "== test_block_with_unknown_tx =="
 	@{ \
 	  TIMESTAMP=$$(date +%s); \

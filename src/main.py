@@ -513,6 +513,11 @@ async def gather_transactions(db_cur, txids, writer):
             await write_msg(writer, mk_getobject_msg(txid))
             # request the object from all connections
             for k, q in CONNECTIONS.items():
+                my_ip, my_port = writer.get_extra_info('peername')
+                peer_self_obj = Peer(my_ip, my_port)
+                print(peer_self_obj, "vs" , k)
+                if peer_self_obj == k:
+                    continue
                 await q.put(mk_getobject_msg(txid))
 
         # wait at most 5 seconds for the transaction
@@ -716,7 +721,10 @@ async def handle_connection(reader, writer):
                 elif msg_type == 'getobject':
                     await handle_getobject_msg(msg, writer)
                 elif msg_type == 'object':
-                    await handle_object_msg(msg, peer, writer)
+                    t = asyncio.create_task(handle_object_msg_safe(msg, peer, writer))
+                    BACKGROUND_TASKS.add(t)
+                    t.add_done_callback(BACKGROUND_TASKS.discard)
+                    #await handle_object_msg(msg, peer, writer)
                 elif msg_type == 'getchaintip':
                     await handle_getchaintip_msg(msg, writer)
                 elif msg_type == 'chaintip':
@@ -755,6 +763,32 @@ async def handle_connection(reader, writer):
             read_task.cancel()
         if queue_task is not None and not queue_task.done():
             queue_task.cancel()
+
+
+async def handle_object_msg_safe(msg, peer, writer):
+    try:
+        await handle_object_msg(msg, peer, writer)
+
+    except NonfaultyNodeException as e:
+        print("{}: An error occured: {}: {}".format(peer, e.error_name, e.message))
+        try:
+            await write_msg(writer, mk_error_msg(e.message, e.error_name))
+        except Exception:
+            pass
+
+    except FaultyNodeException as e:
+        PEERS.removePeer(peer)
+        PEERS.save()
+        print("{}: Detected Faulty Node: {}: {}".format(peer, e.error_name, e.message))
+        try:
+            await write_msg(writer, mk_error_msg(e.message, e.error_name))
+        except Exception:
+            pass
+
+    except Exception as e:
+        # Generic fallback for unexpected errors in the background task
+        print("{}: An error occured in object task: {}".format(peer, str(e)))
+
 
 
 async def connect_to_node(peer: Peer):
