@@ -863,58 +863,12 @@ def test_chaintip_invalid_pow() -> TestResult:
 
 def run_all_tests() -> List[TestResult]:
     """Run all test cases"""
-    tests = [
-        ("Basic Handshake", test_hello_handshake),
-        ("GetChainTip (Initial)", test_getchaintip_initial),
-        
-        # Test cases from specification
-        ("1a: Unavailable Block", test_unavailable_block),
-        ("1b: Non-Increasing Timestamps", test_non_increasing_timestamps),
-        ("1c: Future Timestamp (2077)", test_future_timestamp),
-        ("1d: Invalid PoW", test_invalid_pow),
-        ("1e: Wrong Genesis", test_wrong_genesis),
-        ("1f: Incorrect Coinbase Height", test_incorrect_coinbase_height),
-        ("1g: Double Spending", test_double_spending),
-        ("1h: Non-Existent Output", test_nonexistent_output),
-        
-        # Additional error cases
-        ("Invalid Ancestry Propagation", test_invalid_ancestry_propagation),
-        ("INVALID_TX_CONSERVATION", test_invalid_tx_conservation),
-        ("INVALID_TX_SIGNATURE", test_invalid_tx_signature),
-        ("INVALID_BLOCK_COINBASE (excessive value)", test_coinbase_excessive_value),
-        ("INVALID_TX_OUTPOINT (spend coinbase same block)", test_spending_coinbase_same_block),
-        ("INVALID_BLOCK_COINBASE (multiple)", test_multiple_coinbase_transactions),
-        ("INVALID_BLOCK_COINBASE (not first)", test_coinbase_not_first),
-        ("INVALID_TX_CONSERVATION (self double-spend)", test_self_double_spend_tx),
-        ("INVALID_FORMAT (block as tx)", test_invalid_format_block_as_tx),
-        ("ChainTip INVALID_FORMAT", test_chaintip_returns_invalid_format),
-        ("ChainTip INVALID_BLOCK_POW", test_chaintip_invalid_pow),
-        
-        # Longest chain rule & happy path tests (CRITICAL for Task 4)
-        ("Happy Path: Valid Chain", test_happy_path_valid_chain),
-        ("Longest Chain Selection", test_longest_chain_selection),
-        ("Invalid Longer Chain Rejected", test_invalid_longer_chain_rejected),
-        ("IHaveObject Broadcast", test_ihaveobject_broadcast),
-
-        # Even more tests
-        ("Peers Message Validation", test_peers_message_validation),
-        ("Invalid Peers Format", test_invalid_peers_format),
-        ("GetPeers On Connect", test_getpeers_on_connect),
-        ("GetChainTip On Connect", test_getchaintip_on_connect),
-        ("Unknown Object Response", test_unknown_object_response),
-        ("Handshake Timeout", test_handshake_timeout),
-        ("Invalid Version", test_invalid_version),
-        ("Object Broadcast After Validation", test_object_broadcast_after_validation),
-        ("Multiple ChainTip Updates", test_multiple_chaintip_updates),
-        ("Forked Chains Selection", test_forked_chains_selection),
-    ]
-    
     results = []
     print(f"\n{'='*70}")
-    print(f"Running {len(tests)} tests...")
+    print(f"Running {len(all_tests)} tests...")
     print(f"{'='*70}\n")
     
-    for name, test_func in tests:
+    for name, test_func in all_tests:
         print(f"Running: {name}...", end=" ", flush=True)
         result = test_func()
         results.append(result)
@@ -1985,6 +1939,67 @@ def test_forked_chains_selection() -> TestResult:
         client.close()
 
 
+all_tests = [
+        ("Basic Handshake", test_hello_handshake),
+        ("GetChainTip (Initial)", test_getchaintip_initial),
+        
+        # Test cases from specification
+        ("1a: Unavailable Block", test_unavailable_block),
+        ("1b: Non-Increasing Timestamps", test_non_increasing_timestamps),
+        ("1c: Future Timestamp (2077)", test_future_timestamp),
+        ("1d: Invalid PoW", test_invalid_pow),
+        ("1e: Wrong Genesis", test_wrong_genesis),
+        ("1f: Incorrect Coinbase Height", test_incorrect_coinbase_height),
+        ("1g: Double Spending", test_double_spending),
+        ("1h: Non-Existent Output", test_nonexistent_output),
+        
+        # Additional error cases
+        ("Invalid Ancestry Propagation", test_invalid_ancestry_propagation),
+        ("INVALID_TX_CONSERVATION", test_invalid_tx_conservation),
+        ("INVALID_TX_SIGNATURE", test_invalid_tx_signature),
+        ("INVALID_BLOCK_COINBASE (excessive value)", test_coinbase_excessive_value),
+        ("INVALID_TX_OUTPOINT (spend coinbase same block)", test_spending_coinbase_same_block),
+        ("INVALID_BLOCK_COINBASE (multiple)", test_multiple_coinbase_transactions),
+        ("INVALID_BLOCK_COINBASE (not first)", test_coinbase_not_first),
+        ("INVALID_TX_CONSERVATION (self double-spend)", test_self_double_spend_tx),
+        ("INVALID_FORMAT (block as tx)", test_invalid_format_block_as_tx),
+        ("ChainTip INVALID_FORMAT", test_chaintip_returns_invalid_format),
+        ("ChainTip INVALID_BLOCK_POW", test_chaintip_invalid_pow),
+        
+        # Longest chain rule & happy path tests (CRITICAL for Task 4)
+        ("Happy Path: Valid Chain", test_happy_path_valid_chain),
+        ("Longest Chain Selection", test_longest_chain_selection),
+        ("Invalid Longer Chain Rejected", test_invalid_longer_chain_rejected),
+        ("IHaveObject Broadcast", test_ihaveobject_broadcast),
+
+        # Even more tests
+        ("Peers Message Validation", test_peers_message_validation),
+        ("Invalid Peers Format", test_invalid_peers_format),
+        ("GetPeers On Connect", test_getpeers_on_connect),
+        ("GetChainTip On Connect", test_getchaintip_on_connect),
+        ("Unknown Object Response", test_unknown_object_response),
+        ("Handshake Timeout", test_handshake_timeout),
+        ("Invalid Version", test_invalid_version),
+        ("Object Broadcast After Validation", test_object_broadcast_after_validation),
+        ("Multiple ChainTip Updates", test_multiple_chaintip_updates),
+        ("Forked Chains Selection", test_forked_chains_selection),
+    ]
+
+def run_specific_tests(indices: List[int]) -> List[TestResult]:
+    """Run tests at specific indices"""
+    
+    results = []
+    for i in indices:
+        if 0 <= i < len(all_tests):
+            name, test_func = all_tests[i]
+            print(f"\nRunning [{i}]: {name}")
+            result = test_func()
+            results.append(result)
+        else:
+            print(f"Invalid test index: {i}")
+    
+    return results
+
 def main():
     """Main entry point"""
     print("Kerma Task 4 Comprehensive Test Suite")
@@ -2000,8 +2015,13 @@ def main():
         print(f"\n✗ Cannot connect to node at {HOST}:{PORT}")
         print(f"  Make sure your node is running first!")
         sys.exit(1)
+
+    if len(sys.argv) > 1:
+        indices = [int(x) for x in sys.argv[1:]]
+        results = run_specific_tests(indices)
+    else:
+        results = run_all_tests()
     
-    results = run_all_tests()
     success = print_summary(results)
     
     sys.exit(0 if success else 1)
