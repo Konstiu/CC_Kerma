@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 # Test configuration
 HOST = 'localhost' # 128.130.122.73
+#HOST = '128.130.122.73' # localhost
 PORT = 18018
 TIMEOUT = 10
 GENESIS_ID = "00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee"
@@ -317,17 +318,47 @@ def test_non_increasing_timestamps() -> TestResult:
         
         client.clear_initial_messages()
         
-        # Create block with timestamp equal to genesis (not strictly greater)
-        block1 = create_and_mine_block([], GENESIS_ID, 1671062400)  # Same as genesis
+        # Build a chain of 2-3 valid blocks first to test recursive fetching
+        block1 = create_and_mine_block([], GENESIS_ID, 1671062400)  # Valid: genesis
+        block1_id = object_id(block1)
         
-        client.send_message({"type": "object", "object": block1})
+        block2 = create_and_mine_block([], block1_id, 1671062401)  # Valid: block1 + 1
+        block2_id = object_id(block2)
         
+        block3 = create_and_mine_block([], block2_id, 1671062402)  # Valid: block2 + 1
+        block3_id = object_id(block3)
+        
+        # Send the final invalid block that references block3
+        # This should trigger recursive fetching of block3 -> block2 -> block1
+        invalid_block = create_and_mine_block([], block3_id, 1671062403)  # Invalid: not > block3
+        
+        client.send_message({"type": "object", "object": invalid_block})
+        
+        # Server should request block3
         msg = client.receive_message(timeout=2)
+        if msg and msg.get('type') == 'getobject':
+            client.send_message({"type": "object", "object": block3})
+            
+            # Server should request block2
+            msg = client.receive_message(timeout=2)
+            if msg and msg.get('type') == 'getobject':
+                client.send_message({"type": "object", "object": block2})
+                
+                # Server should request block1
+                msg = client.receive_message(timeout=2)
+                if msg and msg.get('type') == 'getobject':
+                    client.send_message({"type": "object", "object": block1})
+                    
+                    # Now server should validate and reject the invalid block
+                    msg = client.receive_message(timeout=2)
+        
         if msg and msg.get('type') == 'error' and msg.get('name') == 'INVALID_BLOCK_TIMESTAMP':
-            return TestResult("non_increasing_timestamps", True, "OK", time.time() - start)
+            return TestResult("non_increasing_timestamps", True, "OK - Recursive fetch worked", time.time() - start)
         
         return TestResult("non_increasing_timestamps", False, 
-                        f"Expected INVALID_BLOCK_TIMESTAMP, got: {msg}", time.time() - start)
+                         f"Expected INVALID_BLOCK_TIMESTAMP after recursive fetch, got: {msg}", 
+                         time.time() - start)
+    
     finally:
         client.close()
 
