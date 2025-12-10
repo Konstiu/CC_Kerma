@@ -1,6 +1,6 @@
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.exceptions import InvalidSignature
-from datetime import datetime
+from datetime import datetime, timezone
 from jcs import canonicalize
 
 import sqlite3
@@ -16,31 +16,31 @@ import re
 import constants as const
 
 # perform syntactic checks. returns true iff check succeeded
-OBJECTID_REGEX = re.compile("^[0-9a-f]{64}$")
+OBJECTID_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_objectid(objid_str):
     if not isinstance(objid_str, str):
         return False
     return OBJECTID_REGEX.match(objid_str)
 
-PUBKEY_REGEX = re.compile("^[0-9a-f]{64}$")
+PUBKEY_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_pubkey(pubkey_str):
     if not isinstance(pubkey_str, str):
         return False
     return PUBKEY_REGEX.match(pubkey_str)
 
-SIGNATURE_REGEX = re.compile("^[0-9a-f]{128}$")
+SIGNATURE_REGEX = re.compile(r"^[0-9a-f]{128}$")
 def validate_signature(sig_str):
     if not isinstance(sig_str, str):
         return False
     return SIGNATURE_REGEX.match(sig_str)
 
-NONCE_REGEX = re.compile("^[0-9a-f]{64}$")
+NONCE_REGEX = re.compile(r"^[0-9a-f]{64}$")
 def validate_nonce(nonce_str):
     if not isinstance(nonce_str, str):
         return False
     return NONCE_REGEX.match(nonce_str)
 
-HUMAN_READABLE_REGEX = re.compile("^[ -~]*$")
+HUMAN_READABLE_REGEX = re.compile(r"^[ -~]*$")
 def validate_human_readable(s):
     if not isinstance(s, str):
         return False
@@ -226,9 +226,16 @@ def validate_block(block_dict):
     if ts < 0:
         raise ErrorInvalidFormat("Block object invalid: created timestamp smaller than zero")
     try:
-        datetime.utcfromtimestamp(ts)
+        block_time = datetime.fromtimestamp(ts, tz=timezone.utc)
     except Exception:
         raise ErrorInvalidBlockTimestamp("Block object invalid: created timestamp could not be parsed!")
+    now = datetime.now(timezone.utc)
+    if block_time > now:
+        raise ErrorInvalidBlockTimestamp(
+            f"Block object invalid: created timestamp is in the future "
+            f"(block: {block_time.isoformat()}, now: {now.isoformat()})"
+        )
+    
 
     if 'T' not in block_dict:
         raise ErrorInvalidFormat("Block object invalid: T not set!")
@@ -330,6 +337,7 @@ def verify_transaction(tx_dict, input_txs):
             in_dict[ptxid] = {ptxidx}
 
         if ptxid not in input_txs:
+            print("The problem is here right?")
             raise ErrorUnknownObject(f"Transaction {ptxid} not known")
 
         ptx_dict = input_txs[ptxid]
@@ -414,18 +422,18 @@ def verify_block(block_dict):
     previd = block_dict['previd']
     prev_block, prev_utxo, prev_height = get_block_utxo_height(previd)
 
-    if prev_block is None:
-        raise ErrorUnknownObject("Previous block missing or invalid!")
+    #if prev_block is None:
+    #    raise ErrorUnknownObject("Previous block missing or invalid!")
 
     # check if we have all TXs, fetch them if necessary
     txs = get_block_txs(block_dict['txids'])
-    missing_txids = set(block_dict['txids']) - set(txs.keys())
+    missing_objids = set(block_dict['txids']) - set(txs.keys())
+    if prev_block is None:
+        missing_objids.add(previd)
 
-    print(f'Set of missing transactions: {missing_txids}')
-    if len(missing_txids) > 0:
-        txs = get_block_txs(block_dict['txids'])
-        missing_txids = set(block_dict['txids']) - set(txs.keys())
-        raise NeedMoreObjects(f"Block {blockid} requires transactions {missing_txids}", missing_txids)
+    print(f'Set of missing objects: {missing_objids}')
+    if len(missing_objids) > 0:
+        raise NeedMoreObjects(f"Block {blockid} requires objects {missing_objids}", missing_objids)
 
     new_utxo, height = verify_block_tail(block_dict, prev_block, prev_utxo, prev_height, txs)
 

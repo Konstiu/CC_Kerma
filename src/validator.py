@@ -44,6 +44,7 @@ class Validator:
 
     #whenever a thread validated a new object
     def new_valid_object(self, objid):
+        print("VALIDATED OBJECT WITH ID:", objid)
         for key in self.pending_objects.copy().keys():
             o = self.pending_objects[key]
             unknown_objects = o['unknown_objects']
