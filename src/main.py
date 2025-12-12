@@ -514,7 +514,7 @@ async def handle_object_msg(msg_dict, queue):
             # if some preivous txs are missing, we try to partly verify the transaction
             # if that succeeds we request the missing transactions
             if len(missing_txids) > 0:
-                #objects.verify_transaction_partly(obj_dict, prev_txs)
+                objects.verify_transaction_partly(obj_dict, prev_txs)
                 raise NeedMoreObjects("Transaction references unknown transactions", list(missing_txids))
             objects.verify_transaction(obj_dict, prev_txs)
             objects.store_transaction(obj_dict, cur)

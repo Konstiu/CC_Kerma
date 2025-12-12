@@ -16,8 +16,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 # Test configuration
-#HOST = 'localhost' # 128.130.122.73
-HOST = '128.130.122.73' # localhost
+HOST = 'localhost' # 128.130.122.73
+#HOST = '128.130.122.73' # localhost
 PORT = 18018
 TIMEOUT = 10
 GENESIS_ID = "00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee"
@@ -59,7 +59,7 @@ class KermaTestClient:
             data = json.dumps(msg, separators=(',', ':'))
             self.sock.sendall((data + '\n').encode('utf-8'))
             print(f"→: {data}")
-            time.sleep(4)
+            #time.sleep(4)
             return True
         except Exception as e:
             print(f"Send failed: {e}")
@@ -668,7 +668,7 @@ def test_multiple_coinbase_transactions() -> TestResult:
         client.clear_initial_messages()
         
         # Create TWO coinbase transactions
-        coinbase1 = create_coinbase_tx(1, "a" * 64)
+        coinbase1 = create_coinbase_tx(0, "a" * 64)
         coinbase1_id = object_id(coinbase1)
         
         coinbase2 = create_coinbase_tx(1, "b" * 64)
@@ -678,6 +678,7 @@ def test_multiple_coinbase_transactions() -> TestResult:
         block = create_and_mine_block([coinbase1_id, coinbase2_id], GENESIS_ID, 1671062500)
         
         client.send_message({"type": "object", "object": block})
+        time.sleep(0.1)
         
         # Handle fetching
         requests = client.receive_all_messages(timeout=1)
@@ -689,6 +690,7 @@ def test_multiple_coinbase_transactions() -> TestResult:
                 elif obj_id == coinbase2_id:
                     client.send_message({"type": "object", "object": coinbase2})
         
+        time.sleep(0.1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:

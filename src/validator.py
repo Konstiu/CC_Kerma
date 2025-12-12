@@ -50,16 +50,16 @@ class Validator:
             unknown_objects = o['unknown_objects']
             if objid in unknown_objects:
                 unknown_objects.remove(objid)
+                try:
+                    o['queue'].put_nowait({
+                        'type' : 'resumeValidation',
+                        'object': o['object'],
+                    })
+                except Exception:
+                    pass
+                
                 if len(unknown_objects) == 0:
                     self.pending_objects.pop(key)
-                    #send this into the thread queue
-                    try:
-                        o['queue'].put_nowait({
-                            'type' : 'resumeValidation', #this is a special type to tell the thread to restart validation
-                            'object': o['object'],
-                        })
-                    except Exception:
-                        pass
 
     def new_invalid_object(self, objid):
         for key in self.pending_objects.copy().keys():
