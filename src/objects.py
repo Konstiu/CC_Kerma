@@ -314,6 +314,44 @@ def verify_tx_signature(tx_dict, sig, pubkey):
 class TXVerifyException(Exception):
     pass
 
+
+# semantic checks with partial information
+# some of the previous transactions may be missing
+# this will never be a coinbase transaction as it has no previous transactions
+def verify_transaction_partly(tx_dict, input_txs):
+    in_dict = dict()
+    for i in tx_dict['inputs']:
+        ptxid = i['outpoint']['txid']
+        ptxidx = i['outpoint']['index']
+
+        # check for double spending within the transaction
+        if ptxid in in_dict:
+            if ptxidx in in_dict[ptxid]:
+                raise ErrorInvalidTxConservation(f"The same input ({ptxid}, {ptxidx}) was used multiple times in this transaction")
+            else:
+                in_dict[ptxid].add(ptxidx)
+        else:
+            in_dict[ptxid] = {ptxidx}
+
+        # if we dont have the referenced transaction we cannot do any more checks for this input
+        if ptxid not in input_txs:
+            continue
+
+        # otherwise check object type, output index and signature
+        ptx_dict = input_txs[ptxid]
+
+        # just to be sure
+        if ptx_dict['type'] != 'transaction':
+            raise ErrorInvalidFormat("Previous TX '{}' is not a transaction!".format(ptxid))
+        
+        if ptxidx >= len(ptx_dict['outputs']):
+            raise ErrorInvalidTxOutpoint("Invalid output index in previous TX '{}'!".format(ptxid))
+        
+        output = ptx_dict['outputs'][ptxidx]
+        if not verify_tx_signature(tx_dict, i['sig'], output['pubkey']):
+            raise ErrorInvalidTxSignature("Invalid signature from previous TX '{}'!".format(ptxid))
+        
+
 # semantic checks
 # assert: tx_dict is syntactically valid
 def verify_transaction(tx_dict, input_txs):
@@ -337,7 +375,6 @@ def verify_transaction(tx_dict, input_txs):
             in_dict[ptxid] = {ptxidx}
 
         if ptxid not in input_txs:
-            print("The problem is here right?")
             raise ErrorUnknownObject(f"Transaction {ptxid} not known")
 
         ptx_dict = input_txs[ptxid]
@@ -422,9 +459,6 @@ def verify_block(block_dict):
     previd = block_dict['previd']
     prev_block, prev_utxo, prev_height = get_block_utxo_height(previd)
 
-    #if prev_block is None:
-    #    raise ErrorUnknownObject("Previous block missing or invalid!")
-
     # check if we have all TXs, fetch them if necessary
     txs = get_block_txs(block_dict['txids'])
     missing_objids = set(block_dict['txids']) - set(txs.keys())
@@ -432,6 +466,12 @@ def verify_block(block_dict):
         missing_objids.add(previd)
 
     print(f'Set of missing objects: {missing_objids}')
+
+    # even if some objects are missing we can still verify parts of the block
+    if len(missing_objids) > 0:
+        verify_block_partly(block_dict, prev_block, prev_utxo, prev_height, txs)
+    
+    # if the partly verification succeeded but some objects are still missing we need to request them
     if len(missing_objids) > 0:
         raise NeedMoreObjects(f"Block {blockid} requires objects {missing_objids}", missing_objids)
 
@@ -441,6 +481,141 @@ def verify_block(block_dict):
     # broadcast the new block's ID to all connected peers.
     print("Adding new object '{}'".format(blockid))
     return new_utxo, height
+
+def get_object_from_db(objid):
+    con = sqlite3.connect(const.DB_NAME)
+    try:
+        cur = con.cursor()
+
+        res = cur.execute("SELECT obj FROM objects WHERE oid = ?", (objid,))
+        obj_tuple = res.fetchone()
+        if obj_tuple is None:
+            return None
+
+        obj_dict = expand_object(obj_tuple[0])
+        return obj_dict
+
+    finally:
+        con.close()
+
+# This functions verifies the block with the information it already has
+# if for example some transactions are missing or the previous block is missing it cannot check everything
+def verify_block_partly(block, prev_block, prev_utxo, prev_height, txs):
+    
+    # if the previous block is not None we can already check the block height and timestamp
+    if prev_block is not None:
+        # check that the previous block is indeed a block
+        if prev_block['type'] != 'block':
+            raise ErrorInvalidFormat("Previous block is not a block!")
+
+        # check the block timestamp
+        prev_created_ts = prev_block['created']
+        if prev_created_ts >= block['created']:
+            raise ErrorInvalidBlockTimestamp("Block not created after previous block!")
+        
+        # check the block height
+        if prev_height is None:
+            raise ErrorUnknownObject("No height for previous block found!") # assert: false (should never happen)
+        height = prev_height + 1
+        # if we have a coinbase transaction check its height
+        if len(block['txids']) > 0:
+            first_txid = block['txids'][0]
+            if first_txid in txs:
+                first_tx = txs[first_txid]
+                if 'height' in first_tx:
+                    if first_tx['height'] != height:
+                        raise ErrorInvalidBlockCoinbase("Coinbase TX height invalid!")
+                    
+    # if we know all referenced transactions we can already validate the output value of the coinbase transaction
+    # even if we dont know the parent block
+    if len(block['txids']) == len(txs):
+        
+        # build a list with all transaction objects
+        tx_list = [txs[txid] for txid in block['txids']]
+
+        # check if all transactions are indeed transactions
+        if any(tx['type'] != 'transaction' for tx in tx_list):
+            raise ErrorInvalidFormat("Not all transactions are transactions!")
+
+        # continue here with additional checks
+        # Detect coinbase at index 0 (if any) and ensure no other coinbase exists
+        cbtx = None
+        cbtxid = None
+        if len(tx_list) > 0 and 'height' in tx_list[0]:
+            cbtx = tx_list[0]
+            cbtxid = block['txids'][0]
+            remaining_txs = tx_list[1:]
+        else:
+            remaining_txs = tx_list
+
+        for tx in remaining_txs:
+            # check no other transactions is a coinbase
+            if 'height' in tx:
+                raise ErrorInvalidBlockCoinbase("Coinbase TX not at index 0!")
+            # check that no other transaction spends the coinbase
+            if cbtx is not None:
+                if any(inp['outpoint']['txid'] == cbtxid for inp in tx['inputs']):
+                    raise ErrorInvalidTxOutpoint("Coinbase TX spent in same block!")
+        
+        # Now comes the hard part
+        # Check if we have all referenced outpoints of every input of every transaction
+        
+
+        # For each normal TX, if all referenced input TXs
+        # are already present in `txs` or in the database, then check the
+        # transaction (signatures + conservation) and calculate the fee.
+        # We can only calculate the fee in full if the output values are known for each
+        # input TX (i.e., the input TX is in txs).
+        txfees = 0
+        verifiable_count = 0
+        total_noncoin = len(remaining_txs)
+
+        for tx in remaining_txs:
+            # collect immediate input txs for this tx if present in txs dict
+            input_txs = {}
+            all_inputs_available = True
+            for inp in tx['inputs']:
+                in_txid = inp['outpoint']['txid']
+                if in_txid in txs:
+                    input_txs[in_txid] = txs[in_txid]
+                else:
+                    # get object from database
+                    input_txs[in_txid] = get_object_from_db(in_txid)
+                    if input_txs[in_txid] is None:
+                        all_inputs_available = False
+                        break
+
+            # this should never happen as a transaction can only be known if the previous transactions are known
+            if not all_inputs_available:
+                # cannot verify this tx now (missing referenced tx), skip
+                continue
+
+            # calculate fee: sum(inputs) - sum(outputs)
+            invalue = 0
+            for inp in tx['inputs']:
+                ptxid = inp['outpoint']['txid']
+                ptxidx = inp['outpoint']['index']
+                ptx = input_txs[ptxid]
+
+                # this should also never happen as the transcation would not be stored in the db if the referenced output does not exist
+                if ptxidx >= len(ptx['outputs']):
+                    raise ErrorInvalidTxOutpoint(f"Output index {ptxidx} out of bounds")
+
+                invalue += ptx['outputs'][ptxidx]['value']
+
+            outvalue = sum(o['value'] for o in tx['outputs'])
+            if outvalue > invalue:
+                raise ErrorInvalidTxOutpoint("Outputs exceed inputs!")
+            fee = invalue - outvalue
+            txfees += fee
+            verifiable_count += 1
+
+        # if we could verify all non-coinbase transactions, we can now check the coinbase output value
+        if cbtx is not None and verifiable_count == total_noncoin:
+            if cbtx['outputs'][0]['value'] > const.BLOCK_REWARD + txfees:
+                raise ErrorInvalidBlockCoinbase("Coinbase TX output value too big")
+
+
 
 # apply tx to utxo
 # returns mining fee

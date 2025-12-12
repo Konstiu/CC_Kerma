@@ -453,7 +453,7 @@ async def handle_getobject_msg(msg_dict, writer):
         obj_tuple = res.fetchone()
         # don't have object
         if obj_tuple is None:
-            return
+            raise ErrorUnknownObject(f"Object with id {objid} is unknown")
     finally:
         con.close()
 
@@ -465,7 +465,7 @@ async def handle_getobject_msg(msg_dict, writer):
 def gather_previous_txs(db_cur, tx_dict):
     # coinbase transaction
     if 'height' in tx_dict:
-        return {}
+        return {}, {}
 
     # regular transaction
     prev_txs = {}
@@ -486,11 +486,8 @@ def gather_previous_txs(db_cur, tx_dict):
             prev_txs[ptxid] = ptx_dict
         else:
             missing_txids.add(ptxid)
-    
-    if len(missing_txids) != 0:
-        raise NeedMoreObjects("Transaction references unknown transactions", list(missing_txids))
 
-    return prev_txs
+    return prev_txs, missing_txids
 
 # what to do when an object message arrives
 async def handle_object_msg(msg_dict, queue):
@@ -513,7 +510,12 @@ async def handle_object_msg(msg_dict, queue):
         print("Received new object '{}'".format(objid))
 
         if obj_dict['type'] == 'transaction':
-            prev_txs = gather_previous_txs(cur, obj_dict)
+            prev_txs, missing_txids = gather_previous_txs(cur, obj_dict)
+            # if some preivous txs are missing, we try to partly verify the transaction
+            # if that succeeds we request the missing transactions
+            if len(missing_txids) > 0:
+                #objects.verify_transaction_partly(obj_dict, prev_txs)
+                raise NeedMoreObjects("Transaction references unknown transactions", list(missing_txids))
             objects.verify_transaction(obj_dict, prev_txs)
             objects.store_transaction(obj_dict, cur)
         elif obj_dict['type'] == 'block':
