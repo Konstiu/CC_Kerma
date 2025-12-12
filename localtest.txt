@@ -1,0 +1,249 @@
+Kerma Task 4 Comprehensive Test Suite
+Target: localhost:18018
+Restarting Docker containers for clean environment...
+Docker containers restarted.
+
+
+======================================================================
+Running 40 tests...
+======================================================================
+
+[0/39]: Basic Handshake... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+✓ PASS (4.01s)
+[1/39]: GetChainTip (Initial)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+→: {"type":"getchaintip"}
+←: {"blockid":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","type":"chaintip"}
+✓ PASS (8.30s)
+[2/39]: ⚡ No Fetch: Invalid PoW... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","previd":"1111111111111111111111111111111111111111111111111111111111111111","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"msg":"Block does not satisfy proof-of-work equation (has an objectid of 0444f6a1f2a12f0d99faeeaf9565cb77c1e22fd44f78b1f9864f5fa3c00a4a97)!","name":"INVALID_BLOCK_POW","type":"error"}
+✓ PASS (8.30s)
+[3/39]: ⚡ No Fetch: Future Timestamp... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: 
+Receive failed: Expecting value: line 1 column 1 (char 0)
+    ⛏️  Mined! nonce=0000000000000000... (28654 iterations)
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"0000000000000000000000000000000000000000000000000000000000006fed","previd":"1111111111111111111111111111111111111111111111111111111111111111","created":3376598400,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"msg":"Block object invalid: created timestamp is in the future (block: 2076-12-31T00:00:00+00:00, now: 2025-12-12T14:14:08.052921+00:00)","name":"INVALID_BLOCK_TIMESTAMP","type":"error"}
+✓ PASS (8.25s)
+[4/39]: ⚡ No Fetch: Invalid Genesis... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+    ⛏️  Mined! nonce=0000000000000000... (87806 iterations)
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"00000000000000000000000000000000000000000000000000000000000156fd","previd":null,"created":1671062401,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"fake","note":"test"}}
+←: {"msg":"Block object invalid: previd is null but this is not the genesis block","name":"INVALID_GENESIS","type":"error"}
+✓ PASS (8.71s)
+[5/39]: ⚡ No Fetch: Malformed Block... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: 
+Receive failed: Expecting value: line 1 column 1 (char 0)
+→: {"type":"object","object":{"type":"block","txids":[],"previd":"1111111111111111111111111111111111111111111111111111111111111111","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000"}}
+←: {"msg":"Block does not satisfy proof-of-work equation (has an objectid of 64246eb86eadf82310e15549b374ca3accc75a60e888a1e2d53c5335c747f348)!","name":"INVALID_BLOCK_POW","type":"error"}
+✓ PASS (8.10s)
+[6/39]: ⚡ No Fetch: Invalid Tx Format... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+→: {"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","index":0},"sig":"invalid_not_hex"}],"outputs":[{"pubkey":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","value":1000}]}}
+←: {"msg":"Normal transaction object invalid: Input at index 1 invalid: sig not syntactically valid!","name":"INVALID_FORMAT","type":"error"}
+✓ PASS (8.30s)
+[7/39]: ⚡ No Fetch: Coinbase with Inputs... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+→: {"type":"object","object":{"type":"transaction","height":1,"inputs":[{"outpoint":{"txid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","index":0},"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}],"outputs":[{"pubkey":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","value":50000000000000}]}}
+←: {"msg":"Coinbase transaction object invalid: Additional keys present","name":"INVALID_FORMAT","type":"error"}
+✓ PASS (12.30s)
+[8/39]: ⚡ Fetch Only When Needed... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+    ⛏️  Mined! nonce=0000000000000000... (23961 iterations)
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"0000000000000000000000000000000000000000000000000000000000005d98","previd":"1111111111111111111111111111111111111111111111111111111111111111","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"1111111111111111111111111111111111111111111111111111111111111111","type":"getobject"}
+✓ PASS (8.43s)
+[9/39]: ⚡ Validation Order Check... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+→: {"type":"object","object":{"type":"block","txids":["59f8e5802d7006c7f08ed39e8fc6f0fc03b69b3b8a5ea89175e897f61050407c"],"nonce":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","previd":"1111111111111111111111111111111111111111111111111111111111111111","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"msg":"Block does not satisfy proof-of-work equation (has an objectid of d86febdfd00db10912cec568f81cadeb560f966e3830d9aa46e0af10473c55c1)!","name":"INVALID_BLOCK_POW","type":"error"}
+✓ PASS (8.30s)
+[10/39]: 1a: Unavailable Block... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+    ⛏️  Mined! nonce=0000000000000000... (95890 iterations)
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"0000000000000000000000000000000000000000000000000000000000017691","previd":"1111111111111111111111111111111111111111111111111111111111111111","created":1765548914,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"1111111111111111111111111111111111111111111111111111111111111111","type":"getobject"}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+✓ PASS (13.80s)
+[11/39]: 1b: Non-Increasing Timestamps... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+    ⛏️  Mined! nonce=0000000000000000... (51356 iterations)
+    ⛏️  Mined! nonce=0000000000000000... (1404 iterations)
+    ⛏️  Mining... 100000 nonces...
+    ⛏️  Mined! nonce=0000000000000000... (134857 iterations)
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"0000000000000000000000000000000000000000000000000000000000020ec8","previd":"00007fe222c98f23464deb47c8fd131ca152da0ec0a9e2d3036335886b0f361e","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"00007fe222c98f23464deb47c8fd131ca152da0ec0a9e2d3036335886b0f361e","type":"getobject"}
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"000000000000000000000000000000000000000000000000000000000000057b","previd":"0000a89b338ebf9e991152736ffc32c1a87b769a26e03c5678690bdaf8139472","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"0000a89b338ebf9e991152736ffc32c1a87b769a26e03c5678690bdaf8139472","type":"getobject"}
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"000000000000000000000000000000000000000000000000000000000000c89b","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062400,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"msg":"Block not created after previous block!","name":"INVALID_BLOCK_TIMESTAMP","type":"error"}
+✓ PASS (17.25s)
+[12/39]: 1c: Future Timestamp (2077)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+    ⛏️  Mined! nonce=0000000000000000... (82312 iterations)
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"0000000000000000000000000000000000000000000000000000000000014187","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":3376598400,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"msg":"Block object invalid: created timestamp is in the future (block: 2076-12-31T00:00:00+00:00, now: 2025-12-12T14:15:45.978363+00:00)","name":"INVALID_BLOCK_TIMESTAMP","type":"error"}
+✓ PASS (12.72s)
+[13/39]: 1d: Invalid PoW... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"msg":"Block does not satisfy proof-of-work equation (has an objectid of 4256978daa5f5dbfa74bb63e4e132d7f6f0b8558aca82bd928002eb1b0307453)!","name":"INVALID_BLOCK_POW","type":"error"}
+✓ PASS (8.30s)
+[14/39]: 1e: Wrong Genesis... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+    ⛏️  Mined! nonce=0000000000000000... (72463 iterations)
+→: {"type":"object","object":{"type":"block","txids":[],"nonce":"0000000000000000000000000000000000000000000000000000000000011b0e","previd":null,"created":1671062401,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"fake"}}
+←: {"msg":"Block object invalid: previd is null but this is not the genesis block","name":"INVALID_GENESIS","type":"error"}
+✓ PASS (8.63s)
+[15/39]: 1f: Incorrect Coinbase Height... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: 
+Receive failed: Expecting value: line 1 column 1 (char 0)
+    ⛏️  Mined! nonce=0000000000000000... (91192 iterations)
+→: {"type":"object","object":{"type":"block","txids":["ded7f05868b57a4a16d98b881b94b7bc23b527e4cc48ce50008f3dd17c309d18"],"nonce":"0000000000000000000000000000000000000000000000000000000000016437","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"ded7f05868b57a4a16d98b881b94b7bc23b527e4cc48ce50008f3dd17c309d18","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","height":999,"outputs":[{"pubkey":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","value":50000000000000}]}}
+←: {"msg":"Coinbase TX height invalid!","name":"INVALID_BLOCK_COINBASE","type":"error"}
+✓ PASS (12.61s)
+[16/39]: 1g: Double Spending... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+    ⛏️  Mined! nonce=0000000000000000... (14452 iterations)
+    ⛏️  Mined! nonce=0000000000000000... (51593 iterations)
+→: {"type":"object","object":{"type":"block","txids":["4d4dfd67bbebec2e0f0801116826166d0005ace0cb3aba7e78dbcb99da1a0e7e"],"nonce":"000000000000000000000000000000000000000000000000000000000000c988","previd":"00009a3ad39860f3b70cf603312c14450e40c699ad61a89d140a6851ffe37da1","created":1671062600,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"4d4dfd67bbebec2e0f0801116826166d0005ace0cb3aba7e78dbcb99da1a0e7e","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","index":0},"sig":"bf192d8c5d0c3f7e97dca718fd26436709f38743f9118634c19dbff7a6a265c06da0252df5d81874285a0e8ad97c026ec23c7309c63a25dd996f0f857aa0dd0c"}],"outputs":[{"pubkey":"af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d","value":25000000000000}]}}
+←: {"objectid":"b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","height":1,"outputs":[{"pubkey":"af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d","value":50000000000000}]}}
+←: {"objectid":"b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","type":"ihaveobject"}
+✗ FAIL (18.68s)
+  └─ Expected INVALID_TX_OUTPOINT error but didn't receive it
+[17/39]: 1h: Non-Existent Output... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+    ⛏️  Mining... 100000 nonces...
+    ⛏️  Mined! nonce=0000000000000000... (140117 iterations)
+    ⛏️  Mining... 100000 nonces...
+    ⛏️  Mined! nonce=0000000000000000... (107778 iterations)
+→: {"type":"object","object":{"type":"block","txids":["d003328dace979ad8ded49ec531679fc28e15931f2c7a5577a2a69e304cf2836"],"nonce":"000000000000000000000000000000000000000000000000000000000001a501","previd":"00001a313b16eb23947302f0f9b32c80bfb8cffdf1d801c64c2698bbe44e08ca","created":1671062600,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"00001a313b16eb23947302f0f9b32c80bfb8cffdf1d801c64c2698bbe44e08ca","type":"getobject"}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+→: {"type":"object","object":{"type":"block","txids":["b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed"],"nonce":"0000000000000000000000000000000000000000000000000000000000022354","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"00001a313b16eb23947302f0f9b32c80bfb8cffdf1d801c64c2698bbe44e08ca","type":"ihaveobject"}
+✗ FAIL (23.18s)
+  └─ Expected INVALID_TX_OUTPOINT. Got 3 messages, errors: [{'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}]
+[18/39]: INVALID_TX_CONSERVATION... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+    ⛏️  Mined! nonce=0000000000000000... (18993 iterations)
+→: {"type":"object","object":{"type":"block","txids":["b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","ad8a8ad512c6cd6ca06cc5e671195c13e92371bc6a10f705f6ea8f37eaf54ec9"],"nonce":"0000000000000000000000000000000000000000000000000000000000004a30","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"ad8a8ad512c6cd6ca06cc5e671195c13e92371bc6a10f705f6ea8f37eaf54ec9","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","index":0},"sig":"ac3ba4110f78f402eb54b35e5a73672110042795da2a1194018a249bae81c187386adce3de816c56082be8e6d02cb492df1d8383998cf4158a581ea4f06f6c04"}],"outputs":[{"pubkey":"af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d","value":99999999999999}]}}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+✗ FAIL (13.42s)
+  └─ Expected INVALID_TX_CONSERVATION, got: [{'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}]
+[19/39]: INVALID_TX_SIGNATURE... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+    ⛏️  Mined! nonce=0000000000000000... (1149 iterations)
+→: {"type":"object","object":{"type":"block","txids":["b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","c4f8ea89300824944bdcb0f186f45479a23a919f4bd17ae901de28e0a9c778f9"],"nonce":"000000000000000000000000000000000000000000000000000000000000047c","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"c4f8ea89300824944bdcb0f186f45479a23a919f4bd17ae901de28e0a9c778f9","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","index":0},"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"outputs":[{"pubkey":"af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d","value":25000000000000}]}}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+✗ FAIL (17.32s)
+  └─ Expected INVALID_TX_SIGNATURE, got: [{'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}]
+[20/39]: INVALID_BLOCK_COINBASE (excessive value)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+    ⛏️  Mined! nonce=0000000000000000... (58237 iterations)
+→: {"type":"object","object":{"type":"block","txids":["40e9ec8de7b65ef8beabc30cd77445b1852a028d5e8b8ada07d637de6195dbe8"],"nonce":"000000000000000000000000000000000000000000000000000000000000e37c","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"40e9ec8de7b65ef8beabc30cd77445b1852a028d5e8b8ada07d637de6195dbe8","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","height":1,"outputs":[{"pubkey":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","value":99999999999999}]}}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+✗ FAIL (19.63s)
+  └─ Expected INVALID_BLOCK_COINBASE, got: [{'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}]
+[21/39]: INVALID_TX_OUTPOINT (spend coinbase same block)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+    ⛏️  Mined! nonce=0000000000000000... (14452 iterations)
+→: {"type":"object","object":{"type":"block","txids":["b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","4d4dfd67bbebec2e0f0801116826166d0005ace0cb3aba7e78dbcb99da1a0e7e"],"nonce":"0000000000000000000000000000000000000000000000000000000000003873","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"msg":"Coinbase TX spent in same block!","name":"INVALID_TX_OUTPOINT","type":"error"}
+✗ FAIL (12.39s)
+  └─ Expected INVALID_TX_OUTPOINT, got: []
+[22/39]: INVALID_BLOCK_COINBASE (multiple)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+    ⛏️  Mining... 100000 nonces...
+    ⛏️  Mining... 200000 nonces...
+    ⛏️  Mined! nonce=0000000000000000... (290982 iterations)
+→: {"type":"object","object":{"type":"block","txids":["376c54f2e420c8c5c6ebe5562e7e6e6c3805336452757386feee6d990757ff6a","75f72f15c8c54b6184a5ad53ad3ac638b72abcc69867376fcd0c284f0b0ad760"],"nonce":"00000000000000000000000000000000000000000000000000000000000470a5","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"376c54f2e420c8c5c6ebe5562e7e6e6c3805336452757386feee6d990757ff6a","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","height":1,"outputs":[{"pubkey":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","value":50000000000000}]}}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+✗ FAIL (21.00s)
+  └─ Expected INVALID_BLOCK_COINBASE, got: [{'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}]
+[23/39]: INVALID_BLOCK_COINBASE (not first)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+    ⛏️  Mined! nonce=0000000000000000... (24509 iterations)
+→: {"type":"object","object":{"type":"block","txids":["696d5b330fdf294931c9ccaec5555cb77c6d482d431833d50794728ac887ce93","b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed"],"nonce":"0000000000000000000000000000000000000000000000000000000000005fbc","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"696d5b330fdf294931c9ccaec5555cb77c6d482d431833d50794728ac887ce93","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","index":0},"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}],"outputs":[{"pubkey":"af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d","value":1000}]}}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+✗ FAIL (16.47s)
+  └─ Expected INVALID_BLOCK_COINBASE, got: [{'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}, {'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}]
+[24/39]: INVALID_TX_CONSERVATION (self double-spend)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+    ⛏️  Mined! nonce=0000000000000000... (15217 iterations)
+→: {"type":"object","object":{"type":"block","txids":["b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","98a39d1ef90ee37f70a75841ac5df1ce6c0fc723f07fc67c24e1d8eac2693e8a"],"nonce":"0000000000000000000000000000000000000000000000000000000000003b70","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"98a39d1ef90ee37f70a75841ac5df1ce6c0fc723f07fc67c24e1d8eac2693e8a","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","index":0},"sig":"527e16b30894e6bf034c1492fc77f41aeff8ddd292450734904c34335db63fd795c20ab9a404dd0a2df163c7d260b2ec43fa1b4a751d2e3b13674a9a90506a06"},{"outpoint":{"txid":"b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed","index":0},"sig":"527e16b30894e6bf034c1492fc77f41aeff8ddd292450734904c34335db63fd795c20ab9a404dd0a2df163c7d260b2ec43fa1b4a751d2e3b13674a9a90506a06"}],"outputs":[{"pubkey":"af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d","value":25000000000000}]}}
+←: {"msg":"The same input (b3d1bda7c7c79918bccba7d5f6be86c8a2fc24d472010f46f1a155f5fa0b82ed, 0) was used multiple times in this transaction","name":"INVALID_TX_CONSERVATION","type":"error"}
+✓ PASS (13.40s)
+[25/39]: INVALID_FORMAT (block as tx)... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: 
+Receive failed: Expecting value: line 1 column 1 (char 0)
+    ⛏️  Mining... 100000 nonces...
+    ⛏️  Mined! nonce=0000000000000000... (174720 iterations)
+→: {"type":"object","object":{"type":"block","txids":["fcb6680309f5df94e3241b3426fa85677ef23d9f3197086f21f677a4a58e3917"],"nonce":"000000000000000000000000000000000000000000000000000000000002aa7f","previd":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","created":1671062500,"T":"0000abc000000000000000000000000000000000000000000000000000000000","miner":"test","note":"test"}}
+←: {"objectid":"fcb6680309f5df94e3241b3426fa85677ef23d9f3197086f21f677a4a58e3917","type":"getobject"}
+→: {"type":"object","object":{"type":"transaction","inputs":[{"outpoint":{"txid":"00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee","index":0},"sig":"11978d4e4a84fea262a154e7277d8007b18898fa9b016d838890568bb2127cb6db831736bd50dceb7e9094c007a7bf239c33f71f1196321c376bf9cc63653f00"}],"outputs":[{"pubkey":"af06a3e3291714e4f356c19c9b15cd1951ec6e6662aa77be07547f289383341d","value":1000}]}}
+←: {"msg":"Timeout triggered","name":"UNFINDABLE_OBJECT","type":"error"}
+✗ FAIL (14.07s)
+  └─ Expected INVALID_FORMAT, got: [{'msg': 'Timeout triggered', 'name': 'UNFINDABLE_OBJECT', 'type': 'error'}]
+[26/39]: ChainTip INVALID_FORMAT... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getpeers"}
+→: {"type":"peers","peers":[]}
+→: {"type":"chaintip","blockid":"696d5b330fdf294931c9ccaec5555cb77c6d482d431833d50794728ac887ce93"}
+←: {"msg":"Block does not satisfy proof-of-work equation (has an objectid of 696d5b330fdf294931c9ccaec5555cb77c6d482d431833d50794728ac887ce93)!","name":"INVALID_BLOCK_POW","type":"error"}
+✗ FAIL (12.30s)
+  └─ Expected INVALID_FORMAT
+[27/39]: ChainTip INVALID_BLOCK_POW... ←: {"agent":"","type":"hello","version":"0.10.3"}
+→: {"type":"hello","version":"0.10.0","agent":"Kerma-Test-Client"}
+←: {"type":"getchaintip"}
+→: {"type":"chaintip","blockid":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"}
