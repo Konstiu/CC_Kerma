@@ -16,8 +16,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
 # Test configuration
-HOST = 'localhost' # 128.130.122.73
-#HOST = '128.130.122.73' # localhost
+#HOST = 'localhost' # 128.130.122.73
+HOST = '128.130.122.73' # localhost
 PORT = 18018
 TIMEOUT = 10
 GENESIS_ID = "00002fa163c7dab0991544424b9fd302bb1782b185e5a3bbdf12afb758e57dee"
@@ -58,10 +58,11 @@ class KermaTestClient:
         try:
             data = json.dumps(msg, separators=(',', ':'))
             self.sock.sendall((data + '\n').encode('utf-8'))
+            print(f"→: {data}")
+            time.sleep(4)
             return True
         except Exception as e:
-            if ENABLE_DETAILED_LOGGING:
-                print(f"  ✗ Send failed: {e}")
+            print(f"Send failed: {e}")
             return False
     
     def receive_message(self, timeout: Optional[float] = None) -> Optional[Dict]:
@@ -79,6 +80,7 @@ class KermaTestClient:
                 buffer += chunk
             
             line = buffer.split(b'\n', 1)[0]
+            print(f"←: {line.decode('utf-8')}")
             msg = json.loads(line.decode('utf-8'))
             return msg
         except socket.timeout:
@@ -273,12 +275,12 @@ def test_unavailable_block() -> TestResult:
         block = create_and_mine_block([], fake_parent,  int(time.time()))
         
         client.send_message({"type": "object", "object": block})
+
         
         # Should receive getobject for the missing parent
         msg = client.receive_message(timeout=2)
         if msg and msg.get('type') == 'getobject' and msg.get('objectid') == fake_parent:
             # Don't respond - let it timeout (5s)
-            time.sleep(6)
             
             # Should get UNFINDABLE_OBJECT error
             msg = client.receive_message(timeout=2)
@@ -327,9 +329,7 @@ def test_non_increasing_timestamps() -> TestResult:
         
         client.send_message({"type": "object", "object": invalid_block})
         
-        # Wait before listening
-        time.sleep(0.3)
-        
+        # Wait before listening        
         # Handle recursive fetching - match working pattern
         for i in range(15):
             msg = client.receive_message(timeout=1.0)
@@ -350,7 +350,6 @@ def test_non_increasing_timestamps() -> TestResult:
                                     f"Wrong error: {msg.get('name')}", time.time() - start)
         
         # Wait for error message
-        time.sleep(1)
         
         # Check for error messages
         for _ in range(5):
@@ -567,9 +566,7 @@ def test_double_spending() -> TestResult:
         
         # Send block2 first
         client.send_message({"type": "object", "object": block2})
-        
         # Wait before listening
-        time.sleep(0.3)
         
         # Handle recursive fetching - match working pattern
         for i in range(15):
@@ -591,7 +588,6 @@ def test_double_spending() -> TestResult:
                                     f"Wrong error: {msg.get('name')}", time.time() - start)
         
         # Wait for error message
-        time.sleep(1)
         
         # Check for error messages
         for _ in range(5):
@@ -649,7 +645,6 @@ def test_spending_coinbase_same_block() -> TestResult:
                 elif obj_id == tx1_id:
                     client.send_message({"type": "object", "object": tx1_signed})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -694,7 +689,6 @@ def test_multiple_coinbase_transactions() -> TestResult:
                 elif obj_id == coinbase2_id:
                     client.send_message({"type": "object", "object": coinbase2})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -737,7 +731,6 @@ def test_coinbase_not_first() -> TestResult:
         
         client.send_message({"type": "object", "object": block})
 
-        time.sleep(0.3)
         
         # Handle fetching
         requests = client.receive_all_messages(timeout=1)
@@ -749,7 +742,6 @@ def test_coinbase_not_first() -> TestResult:
                 elif obj_id == coinbase_id:
                     client.send_message({"type": "object", "object": coinbase})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -809,7 +801,6 @@ def test_self_double_spend_tx() -> TestResult:
                 elif obj_id == tx1_id:
                     client.send_message({"type": "object", "object": tx1_signed})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -856,7 +847,6 @@ def test_invalid_format_block_as_tx() -> TestResult:
                 if obj_id == tx1_id:
                     client.send_message({"type": "object", "object": tx1_signed})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -893,7 +883,6 @@ def test_chaintip_returns_invalid_format() -> TestResult:
         # Send chaintip that references a transaction instead of block
         client.send_message({"type": "chaintip", "blockid": tx_id})
 
-        time.sleep(0.3)
         
         # Node should request it
         msg = client.receive_message(timeout=2)
@@ -932,7 +921,6 @@ def test_chaintip_invalid_pow() -> TestResult:
             return TestResult("chaintip_invalid_pow", False, "Test ID accidentally passes PoW!", time.time() - start)
         
         client.send_message({"type": "chaintip", "blockid": invalid_block_id})
-        time.sleep(0.3)
 
         # Should get error immediately (or might try to fetch first)
         errors = client.receive_all_messages(timeout=2)
@@ -1002,7 +990,6 @@ def test_nonexistent_output() -> TestResult:
         coinbase1 = create_coinbase_tx(1, pubkey, 50000000000000)
         coinbase1_id = object_id(coinbase1)
         
-        print(f"[DEBUG] Created coinbase with 1 output: {coinbase1_id}")
         
         # Try to spend from index 1 (doesn't exist!)
         tx1 = create_transaction(
@@ -1015,7 +1002,6 @@ def test_nonexistent_output() -> TestResult:
         tx1_signed = sign_transaction(tx1, [privkey])
         tx1_id = object_id(tx1_signed)
         
-        print(f"[DEBUG] Created tx spending non-existent index 1: {tx1_id}")
         
         # Create blocks
         block1 = create_and_mine_block([coinbase1_id], GENESIS_ID, 1671062500)
@@ -1024,11 +1010,8 @@ def test_nonexistent_output() -> TestResult:
         block2 = create_and_mine_block([tx1_id], block1_id, 1671062600)
         block2_id = object_id(block2)
         
-        print(f"[DEBUG] Block1: {block1_id}")
-        print(f"[DEBUG] Block2: {block2_id}")
         
         # Send block2
-        print(f"[DEBUG] Sending block2...")
         client.send_message({"type": "object", "object": block2})
         
         # Collect all messages with detailed logging
@@ -1038,25 +1021,20 @@ def test_nonexistent_output() -> TestResult:
         
         while iteration < max_iterations:
             iteration += 1
-            print(f"[DEBUG] Iteration {iteration}: Waiting for messages...")
             
             messages = client.receive_all_messages(timeout=1.5)
             
             if not messages:
-                print(f"[DEBUG] No messages received in iteration {iteration}")
                 break
             
-            print(f"[DEBUG] Received {len(messages)} messages")
             all_messages.extend(messages)
             
             # Check for error immediately
             for msg in messages:
                 msg_type = msg.get('type')
-                print(f"[DEBUG] Message type: {msg_type}")
                 
                 if msg_type == 'error':
                     error_name = msg.get('name')
-                    print(f"[DEBUG] ERROR: {error_name}")
                     if error_name == 'INVALID_TX_OUTPOINT':
                         return TestResult("nonexistent_output", True, "OK", time.time() - start)
             
@@ -1065,30 +1043,22 @@ def test_nonexistent_output() -> TestResult:
             for msg in messages:
                 if msg.get('type') == 'getobject':
                     obj_id = msg.get('objectid')
-                    print(f"[DEBUG] getobject request for: {obj_id}")
                     needs_response = True
                     
                     if obj_id == block1_id:
-                        print(f"[DEBUG] Sending block1")
                         client.send_message({"type": "object", "object": block1})
                     elif obj_id == tx1_id:
-                        print(f"[DEBUG] Sending tx1")
                         client.send_message({"type": "object", "object": tx1_signed})
                     elif obj_id == coinbase1_id:
-                        print(f"[DEBUG] Sending coinbase1")
                         client.send_message({"type": "object", "object": coinbase1})
-                    else:
-                        print(f"[DEBUG] Unknown object requested: {obj_id}")
             
             # If we sent responses, wait a bit for the node to process
             if needs_response:
                 time.sleep(0.5)
             else:
                 # No more getobject requests, wait a bit then check one more time
-                time.sleep(1)
                 final_messages = client.receive_all_messages(timeout=1)
                 if final_messages:
-         #           print(f"[DEBUG] Final check: {len(final_messages)} messages")
                     all_messages.extend(final_messages)
                     for msg in final_messages:
                         if msg.get('type') == 'error' and msg.get('name') == 'INVALID_TX_OUTPOINT':
@@ -1096,9 +1066,7 @@ def test_nonexistent_output() -> TestResult:
                 break
         
         # Check all collected messages
-        #print(f"[DEBUG] Total messages collected: {len(all_messages)}")
         error_messages = [msg for msg in all_messages if msg.get('type') == 'error']
-        #print(f"[DEBUG] Error messages: {error_messages}")
         
         return TestResult(
             "nonexistent_output", 
@@ -1152,7 +1120,6 @@ def test_invalid_tx_conservation() -> TestResult:
                 elif obj_id == tx1_id:
                     client.send_message({"type": "object", "object": tx1_signed})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -1205,7 +1172,6 @@ def test_invalid_tx_signature() -> TestResult:
                 elif obj_id == tx1_id:
                     client.send_message({"type": "object", "object": tx1})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -1244,7 +1210,6 @@ def test_coinbase_excessive_value() -> TestResult:
                 if obj_id == coinbase_id:
                     client.send_message({"type": "object", "object": coinbase})
         
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         for msg in errors:
@@ -1304,7 +1269,6 @@ def test_happy_path_valid_chain() -> TestResult:
         client.send_message({"type": "object", "object": block2})
         
         # Wait before starting to listen (like manual test does)
-        time.sleep(0.3)
         
         # Handle recursive fetching - keep trying for 15 iterations like manual test
         for i in range(15):
@@ -1330,7 +1294,6 @@ def test_happy_path_valid_chain() -> TestResult:
         
         # Wait for block validation (like manual test)
         print("  Waiting for block validation...")
-        time.sleep(2)
         
         # Check tip
         print("  Checking chain tip...")
@@ -1406,7 +1369,6 @@ def test_longest_chain_selection() -> TestResult:
                 if obj_id == coinbase1a_id:
                     client.send_message({"type": "object", "object": coinbase1a})
         
-        time.sleep(0.5)
         
         # Check tip (should be block1a)
         client.send_message({"type": "getchaintip"})
@@ -1434,7 +1396,6 @@ def test_longest_chain_selection() -> TestResult:
                     elif obj_id == coinbase2b_id:
                         client.send_message({"type": "object", "object": coinbase2b})
         
-        time.sleep(2.5)
         
         # Check tip again (should now be block2b - the longer chain)
         client.send_message({"type": "getchaintip"})
@@ -1502,7 +1463,6 @@ def test_invalid_longer_chain_rejected() -> TestResult:
                 if obj_id == coinbase1_id:
                     client.send_message({"type": "object", "object": coinbase1})
         
-        time.sleep(1.5)
         
         # Check tip should be block1
         client.send_message({"type": "getchaintip"})
@@ -1529,7 +1489,6 @@ def test_invalid_longer_chain_rejected() -> TestResult:
                         client.send_message({"type": "object", "object": coinbase3})
         
         # Should get INVALID_ANCESTRY for block3
-        time.sleep(1)
         errors = client.receive_all_messages(timeout=2)
         
         # Check final tip - should still be block1, NOT block3
@@ -1575,7 +1534,6 @@ def test_ihaveobject_broadcast() -> TestResult:
         
         # Send the block
         client.send_message({"type": "object", "object": block})
-        time.sleep(0.3)
         
         # Handle fetching
         requests = client.receive_all_messages(timeout=0.5)
@@ -1586,7 +1544,6 @@ def test_ihaveobject_broadcast() -> TestResult:
                     client.send_message({"type": "object", "object": coinbase})
         
         # Wait and check for ihaveobject messages
-        time.sleep(1)
         messages = client.receive_all_messages(timeout=1)
         
         # Look for ihaveobject
@@ -1635,7 +1592,6 @@ def test_peers_message_validation() -> TestResult:
         ]
         
         client.send_message({"type": "peers", "peers": valid_peers})
-        time.sleep(0.5)
         
         # Request peers back
         client.send_message({"type": "getpeers"})
@@ -1821,7 +1777,6 @@ def test_object_broadcast_after_validation() -> TestResult:
                     if req.get('objectid') == coinbase_id:
                         client.send_message({"type": "object", "object": coinbase})
         
-        time.sleep(1)
         
         # Now try to request the block back
         client.send_message({"type": "getobject", "objectid": block_id})
@@ -1884,7 +1839,6 @@ def test_multiple_chaintip_updates() -> TestResult:
             if req.get('type') == 'getobject' and req.get('objectid') == cb1_id:
                 client.send_message({"type": "object", "object": cb1})
         
-        time.sleep(0.5)
         client.send_message({"type": "getchaintip"})
         msg1 = client.receive_message(timeout=2)
         tip1 = msg1.get('blockid') if msg1 else None
@@ -1896,7 +1850,6 @@ def test_multiple_chaintip_updates() -> TestResult:
             if req.get('type') == 'getobject' and req.get('objectid') == cb2_id:
                 client.send_message({"type": "object", "object": cb2})
         
-        time.sleep(0.5)
         client.send_message({"type": "getchaintip"})
         msg2 = client.receive_message(timeout=2)
         tip2 = msg2.get('blockid') if msg2 else None
@@ -1908,7 +1861,6 @@ def test_multiple_chaintip_updates() -> TestResult:
             if req.get('type') == 'getobject' and req.get('objectid') == cb3_id:
                 client.send_message({"type": "object", "object": cb3})
         
-        time.sleep(0.5)
         client.send_message({"type": "getchaintip"})
         msg3 = client.receive_message(timeout=2)
         tip3 = msg3.get('blockid') if msg3 else None
@@ -1994,7 +1946,6 @@ def test_forked_chains_selection() -> TestResult:
                     elif oid == cb_b2_id:
                         client.send_message({"type": "object", "object": cb_b2})
         
-        time.sleep(0.5)
         
         print("  Sending fork A (longer)...")
         
@@ -2018,7 +1969,6 @@ def test_forked_chains_selection() -> TestResult:
                     elif oid == cb_a3_id:
                         client.send_message({"type": "object", "object": cb_a3})
         
-        time.sleep(1)
         
         # Check final tip
         client.send_message({"type": "getchaintip"})
