@@ -32,6 +32,8 @@ LISTEN_CFG = {
         "address": const.ADDRESS,
         "port": const.PORT
 }
+CHAINTIP = const.GENESIS_BLOCK_ID
+CHAINTIP_HEIGHT = 0
 
 # Add peer to your list of peers
 def add_peer(peer):
@@ -69,6 +71,10 @@ def del_connection(peer):
     PEERS.removePeer(p)
     PEERS.save()
 
+async def broadcast_msg(msg):
+    for k, q in CONNECTIONS.items():
+        await q.put(msg)
+
 # Make msg objects
 def mk_error_msg(error_str, error_name):
     return {"type": "error", "name": error_name, "msg": error_str}
@@ -95,13 +101,13 @@ def mk_ihaveobject_msg(objid):
     return {"type":"ihaveobject", "objectid":objid}
 
 def mk_chaintip_msg(blockid):
-    return {"type":"chaintip", "blockid":blockid}
+    return {"type": "chaintip", "blockid": CHAINTIP}
 
 def mk_mempool_msg(txids):
     pass # TODO
 
 def mk_getchaintip_msg():
-    return {"type":"getchaintip"}
+    return {"type": "getchaintip"}
 
 def mk_getmempool_msg():
     pass # TODO
@@ -151,7 +157,7 @@ def validate_hello_msg(msg_dict):
         if not isinstance(version, str):
             raise ErrorInvalidFormat("Message malformed: version is not a string!")
 
-        if not re.compile(r'0\.10\.\d').fullmatch(version):
+        if not re.compile('0\.10\.\d').fullmatch(version):
             raise ErrorInvalidFormat("Version invalid")
 
         validate_allowed_keys(msg_dict, ['type', 'version', 'agent'], 'hello')
@@ -171,11 +177,11 @@ def validate_hello_msg(msg_dict):
 
 # returns true iff host_str is a valid hostname
 def validate_hostname(host_str):
-    if not re.compile(r'[a-zA-Z\d\.\-\_]{3,50}').fullmatch(host_str):
+    if not re.compile('[a-zA-Z\d\.\-\_]{3,50}').fullmatch(host_str):
         return False
         #raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not match regex")
     
-    if not re.compile(r'.*[a-zA-Z].*').fullmatch(host_str):
+    if not re.compile('.*[a-zA-Z].*').fullmatch(host_str):
         return False
         #raise ErrorInvalidFormat(f"Peer '{host_str}' not valid: Does not contain a letter")
 
@@ -187,7 +193,7 @@ def validate_hostname(host_str):
 
 # returns true iff host_str is a valid ipv4 address
 def validate_ipv4addr(host_str):
-    if not re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').fullmatch(host_str):
+    if not re.compile('\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}').fullmatch(host_str):
         return False
     
     try:
@@ -260,9 +266,8 @@ def validate_getpeers_msg(msg_dict):
 
 # raise an exception if not valid
 def validate_getchaintip_msg(msg_dict):
-    if msg_dict['type'] != 'getchaintip':
-        raise ErrorInvalidFormat("Message type is not 'getchaintip'!") # assert: false
-    validate_allowed_keys(msg_dict, ['type'], 'getchaintip')
+    if len(msg_dict) != 1:
+        raise ErrorInvalidFormat("Invalid getchaintip message")
 
 # raise an exception if not valid
 def validate_getmempool_msg(msg_dict):
@@ -350,10 +355,10 @@ def validate_object_msg(msg_dict):
         if 'object' not in msg_dict:
             raise ErrorInvalidFormat("Message malformed: object is missing!")
 
+        validate_allowed_keys(msg_dict, ['type','object'], 'object')
+
         obj = msg_dict['object']
         objects.validate_object(obj)
-
-        validate_allowed_keys(msg_dict, ['type','object'], 'object')
 
     except FaultyNodeException as e:
         raise e
@@ -364,16 +369,18 @@ def validate_object_msg(msg_dict):
 
 # raise an exception if not valid
 def validate_chaintip_msg(msg_dict):
-    if msg_dict['type'] != 'chaintip':
-        raise ErrorInvalidFormat("Message type is not 'chaintip'!") # assert: false
-    if 'blockid' not in msg_dict:
-        raise ErrorInvalidFormat("Message malformed: blockid is missing!")
-    blockid = msg_dict['blockid']
-    if not isinstance(blockid, str):
-        raise ErrorInvalidFormat("Message malformed: blockid is not a string!")
-    if not objects.validate_objectid(blockid):
-        raise ErrorInvalidFormat("Message malformed: blockid invalid!")
-    validate_allowed_keys(msg_dict, ['type','blockid'], 'chaintip')
+    if len(msg_dict) != 2:
+        raise ErrorInvalidFormat("More than two keys set")
+    if not "blockid" in msg_dict:
+        raise ErrorInvalidFormat("blockid not set")
+    if not isinstance(msg_dict["blockid"], str):
+        raise ErrorInvalidFormat("blockid not a string")
+    if not objects.validate_objectid(msg_dict["blockid"]):
+        raise ErrorInvalidFormat(f"Invalid format of blockid")
+
+    if int(msg_dict["blockid"], 16) >= int(const.BLOCK_TARGET, 16):
+        raise ErrorInvalidBlockPOW(f"Proposed chaintip does not satisfy proof-of-work equation (has an objectid of {msg_dict['blockid']})!")
+
     
 # raise an exception if not valid
 def validate_mempool_msg(msg_dict):
@@ -453,7 +460,9 @@ async def handle_getobject_msg(msg_dict, writer):
         obj_tuple = res.fetchone()
         # don't have object
         if obj_tuple is None:
-            raise ErrorUnknownObject(f"Object with id {objid} is unknown")
+            await write_msg(writer, mk_error_msg(f"Object {objid} not known", "UNKNOWN_OBJECT"))
+            return
+            
     finally:
         con.close()
 
@@ -465,11 +474,10 @@ async def handle_getobject_msg(msg_dict, writer):
 def gather_previous_txs(db_cur, tx_dict):
     # coinbase transaction
     if 'height' in tx_dict:
-        return {}, {}
+        return {}
 
     # regular transaction
     prev_txs = {}
-    missing_txids = set()
     for i in tx_dict['inputs']:
         ptxid = i['outpoint']['txid']
 
@@ -484,17 +492,16 @@ def gather_previous_txs(db_cur, tx_dict):
                 raise ErrorInvalidFormat(f"Transaction attempts to spend from a block")
 
             prev_txs[ptxid] = ptx_dict
-        else:
-            missing_txids.add(ptxid)
 
-    return prev_txs, missing_txids
+    return prev_txs
 
 # what to do when an object message arrives
 async def handle_object_msg(msg_dict, queue):
+    global CHAINTIP
+    global CHAINTIP_HEIGHT
     obj_dict = msg_dict['object']
     objid = objects.get_objid(obj_dict)
     print(f"Received object with id {objid}: {obj_dict}")
-    print
 
     err_str = None
     con = sqlite3.connect(const.DB_NAME)
@@ -508,20 +515,23 @@ async def handle_object_msg(msg_dict, queue):
             return
 
         print("Received new object '{}'".format(objid))
+        # notify validator that we received this object here
+        VALIDATOR.received_object(objid)
+        if VALIDATOR.is_pending(objid):
+            VALIDATOR.add_peer(objid, queue)
+            return # no need to rerun verification that is pending yet
 
         if obj_dict['type'] == 'transaction':
-            prev_txs, missing_txids = gather_previous_txs(cur, obj_dict)
-            # if some preivous txs are missing, we try to partly verify the transaction
-            # if that succeeds we request the missing transactions
-            if len(missing_txids) > 0:
-                objects.verify_transaction_partly(obj_dict, prev_txs)
-                raise NeedMoreObjects("Transaction references unknown transactions", list(missing_txids))
+            prev_txs = gather_previous_txs(cur, obj_dict)
             objects.verify_transaction(obj_dict, prev_txs)
             objects.store_transaction(obj_dict, cur)
         elif obj_dict['type'] == 'block':
             new_utxo, height = objects.verify_block(obj_dict)
             objects.store_block(obj_dict, new_utxo, height, cur)
-            #store_block_utxo_height(obj_dict, new_utxo, height)
+
+            if height > CHAINTIP_HEIGHT:
+                CHAINTIP_HEIGHT = height
+                CHAINTIP = objid
         else:
             raise ErrorInvalidFormat("Got an object of unknown type") # assert: false
         # if everything worked, commit this
@@ -531,17 +541,16 @@ async def handle_object_msg(msg_dict, queue):
         VALIDATOR.new_valid_object(objid)
 
         # gossip the new object to all connections
-        for k, q in CONNECTIONS.items():
-            await q.put(mk_ihaveobject_msg(objid))
+        await broadcast_msg(mk_ihaveobject_msg(objid))
 
     except NeedMoreObjects as e:
         print(f"Need more elements: {e.message}")
+        print("Adding this to the validator as a pending task")
+        VALIDATOR.verification_pending(obj_dict, queue, e.missingobjids)
         for q in CONNECTIONS.values():
             for missingobjid in e.missingobjids:
                 print(f"Requesting {missingobjid} from peer")
                 await q.put(mk_getobject_msg(missingobjid))
-        print("Adding this to the validator as a pending task")
-        VALIDATOR.verification_pending(obj_dict, queue, e.missingobjids)
         print("Returning")
         return # and consume exception
     except NodeException as e: # whatever the reason, just reject this
@@ -556,59 +565,43 @@ async def handle_object_msg(msg_dict, queue):
         con.close()
 
 
-# returns the chaintip blockid
+# returns the chaintip blockid + height
 def get_chaintip_blockid():
     con = sqlite3.connect(const.DB_NAME)
     try:
         cur = con.cursor()
-        res = cur.execute("SELECT blockid FROM heights WHERE height = (SELECT MAX(height) FROM heights)")
+
+        res = cur.execute("SELECT blockid, height FROM heights ORDER BY height DESC LIMIT 1")
         row = res.fetchone()
         if row is None:
-            raise Exception("No blocks in the database") # should never happen
-        return row[0]
+            raise Exception("Assertion error: Not even the genesis block in database")
+
+        return (row[0], row[1])
+    except Exception as e:
+        # assert: false
+        con.rollback()
+        raise e
     finally:
         con.close()
 
 
 async def handle_getchaintip_msg(msg_dict, writer):
-    block_id = get_chaintip_blockid()
-    await write_msg(writer, mk_chaintip_msg(block_id))
+    await write_msg(writer, mk_chaintip_msg(CHAINTIP))
+
 
 async def handle_getmempool_msg(msg_dict, writer):
     pass # TODO
 
 
 async def handle_chaintip_msg(msg_dict):
-    block_id = msg_dict['blockid']
-    print(f"Received chaintip: {block_id}")
-    # Check PoW
-    if int(block_id, 16) >= int(const.BLOCK_TARGET, 16):
-        raise ErrorInvalidBlockPOW(f"Block does not satisfy proof-of-work equation (has an objectid of {block_id})!")
+    objectid = msg_dict['blockid']
 
-    # Get the object from the database
-    con = sqlite3.connect(const.DB_NAME)
-    obj_dict = None
-    try:
-        cur = con.cursor()
-        res = cur.execute("SELECT obj FROM objects WHERE oid = ?", (block_id,))
-
-        obj = res.fetchone()
-        if obj is not None:
-            obj_dict = objects.expand_object(obj[0])
-    finally:
-        con.close()
-
-    # Validate that it is a block
-    if obj_dict is not None and obj_dict['type'] != 'block':
-        raise ErrorInvalidFormat("Chaintip object is not a block!")
-
-    # If we don't have the block, request it from peers
-    if obj_dict is None:
-        print(f"Chaintip block {block_id} not found, requesting from peers")
-        for q in CONNECTIONS.values():
-            await q.put(mk_getobject_msg(block_id))
-    
-
+    obj = objects.get_object(objectid)
+    if obj == None:
+        await broadcast_msg(mk_getobject_msg(objectid))
+    else:
+        if obj['type'] != 'block':
+            raise ErrorInvalidFormat(f"Proposed chaintip {objectid} is not a block")
 
 async def handle_mempool_msg(msg_dict):
     pass # TODO
@@ -833,6 +826,7 @@ async def init():
 def main():
     # create the database if it does not yet exist
     create_db.createDB()
+    CHAINTIP, CHAINTIP_HEIGHT = get_chaintip_blockid()
     asyncio.run(init())
 
 

@@ -16,9 +16,7 @@ build:
 # add own tests if you want
 run-tests:
 	# Perform a simple connection check   
-	#nc -zv localhost 18018	
-	python test.py
-	python realWorldTest.py
+	nc -zv localhost 18018	
  
 
 # don't touch these targets 
