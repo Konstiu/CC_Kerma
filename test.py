@@ -16,7 +16,8 @@ import queue
 from nacl.signing import SigningKey
 
 # Configuration
-NODE_HOST = '128.130.122.73'
+NODE_HOST = 'localhost'
+#NODE_HOST = '128.130.122.73'
 NODE_PORT = 18018
 TIMEOUT = 10  # seconds for network operations
 RESPONSE_WAIT_TIME = 2.0  # seconds to wait for responses
