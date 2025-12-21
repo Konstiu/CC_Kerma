@@ -16,8 +16,8 @@ import queue
 from nacl.signing import SigningKey
 
 # Configuration
-NODE_HOST = 'localhost'
-#NODE_HOST = '128.130.122.73'
+#NODE_HOST = 'localhost'
+NODE_HOST = '128.130.122.73'
 NODE_PORT = 18018
 TIMEOUT = 10  # seconds for network operations
 RESPONSE_WAIT_TIME = 2.0  # seconds to wait for responses
@@ -428,6 +428,72 @@ def send_objects_and_wait(conn: NodeConnection, objects: List[Dict], wait_time: 
 # ============================================================================
 # CHAIN BUILDING UTILITIES
 # ============================================================================
+def clear_mempool_by_including_txs(conn: NodeConnection, pubkey: str):
+    """
+    Clear mempool by mining a block that INCLUDES all mempool transactions
+    """
+    print("  Clearing mempool by including transactions in block...")
+    
+    # Get current mempool
+    mempool_txids = get_mempool_txids(conn)
+    
+    if not mempool_txids:
+        print("  Mempool already empty")
+        return
+    
+    print(f"  Mempool has {len(mempool_txids)} transactions")
+    
+    # Get current tip
+    current_tip, tip_height, tip_created = get_chaintip(conn)
+    
+    if not current_tip or not isinstance(tip_created, int):
+        print("  Could not get chain tip")
+        return
+    
+    # Create block that includes ALL mempool transactions
+    block_timestamp = tip_created + 60
+    height = (tip_height + 1) if isinstance(tip_height, int) else 1
+    
+    # Create coinbase
+    coinbase = create_coinbase_tx(height=height, pubkey=pubkey)
+    coinbase_id = object_id(coinbase)
+    
+    # Mine block with coinbase + ALL mempool transactions
+    print(f"  Mining block with coinbase + {len(mempool_txids)} mempool transactions...")
+    all_txids = [coinbase_id] + mempool_txids
+    
+    block = create_and_mine_block(
+        txids=all_txids,
+        previd=current_tip,
+        created=block_timestamp,
+        miner="cleaner",
+        note="Clear mempool"
+    )
+    
+    if not block:
+        print("  ⚠️  Failed to mine clearing block")
+        return
+    
+    block_id = object_id(block)
+    print(f"  Mined block: {block_id}")
+    
+    # Send coinbase and block
+    print("  Sending block with mempool transactions...")
+    send_messages(
+        conn,
+        [{"type": "object", "object": coinbase},
+         {"type": "object", "object": block}],
+        wait_time=BLOCK_PROCESSING_WAIT
+    )
+    
+    time.sleep(1.0)
+    
+    # Verify mempool is cleared
+    new_mempool = get_mempool_txids(conn)
+    print(f"  Mempool now has {len(new_mempool)} transactions")
+    print(f"  Removed {len(mempool_txids) - len(new_mempool)} transactions")
+    
+    return len(new_mempool) == 0
 
 def build_chain_with_coinbase(privkey: bytes, pubkey: str, chain_length: int = 2, 
                               base_timestamp: Optional[int] = None,
@@ -1048,8 +1114,654 @@ def test_mempool_reorg(conn: NodeConnection, suite: KermaTestSuite):
     suite.assert_true(gone_after, "Reorg: Tx removed from mempool after reorg",
                       "Tx still present after fork B became best chain")
 
+def test_transaction_removed_when_mined(conn: NodeConnection, suite: KermaTestSuite):
+    """Test: Transaction removed from mempool when included in block"""
+    print("\n--- Test: Transaction Removed When Mined ---")
+    
+    privkey, pubkey = generate_keypair()
+    print(f"  Test pubkey: {pubkey}")
+    
+    # 1. Build chain with spendable coinbase
+    print("  Building chain with spendable coinbase...")
+    objects, coinbase_txid, tip = build_chain_appending_to_tip(
+        conn, pubkey, chain_length=2, miner="test"
+    )
+    if not objects:
+        suite.assert_true(False, "Tx removed when mined: Could not build chain")
+        return
+    
+    # Send chain objects
+    print("  Sending chain objects...")
+    resp_chain = send_messages(
+        conn,
+        [{"type": "object", "object": obj} for obj in objects],
+        wait_time=BLOCK_PROCESSING_WAIT,
+        debug=False
+    )
+    
+    chain_errors = [r for r in resp_chain if r.get("type") == "error"]
+    if chain_errors:
+        suite.assert_true(False, "Tx removed when mined: Chain accepted",
+                         f"Chain errors: {chain_errors[:1]}")
+        return
+    
+    time.sleep(0.8)
+    
+    # 2. Create and add spending transaction to mempool
+    spending_tx = create_spending_tx(coinbase_txid, privkey, pubkey)
+    spending_txid = object_id(spending_tx)
+    
+    print(f"  Sending spending tx to mempool: {spending_txid}")
+    resp_tx = send_messages(
+        conn,
+        [{"type": "object", "object": spending_tx}],
+        wait_time=RESPONSE_WAIT_TIME,
+        debug=False
+    )
+    
+    tx_errors = [r for r in resp_tx if r.get("type") == "error"]
+    if tx_errors:
+        print(f"  ⚠️  Tx errors: {tx_errors[:1]}")
+    
+    # Verify transaction is in mempool
+    in_mempool_before = False
+    for _ in range(6):
+        txids = get_mempool_txids(conn)
+        if spending_txid in txids:
+            in_mempool_before = True
+            break
+        time.sleep(0.3)
+    
+    suite.assert_true(in_mempool_before, "Tx removed when mined: Tx initially in mempool",
+                     "Transaction not added to mempool before mining")
+    
+    if not in_mempool_before:
+        return
+    
+    print(f"  ✓ Transaction in mempool before mining")
+    
+    # 3. Mine a block containing that transaction
+    print("  Mining block containing the transaction...")
+    
+    # Get current tip to build on
+    current_tip, tip_height, tip_created = get_chaintip(conn)
+    if not current_tip or not isinstance(tip_created, int):
+        suite.assert_true(False, "Tx removed when mined: Could not get current tip")
+        return
+    
+    # Create block with the spending transaction
+    block_timestamp = tip_created + 60
+    height = (tip_height + 1) if isinstance(tip_height, int) else 1
+    
+    # Need a coinbase for this block
+    new_coinbase = create_coinbase_tx(height=height, pubkey=pubkey)
+    new_coinbase_id = object_id(new_coinbase)
+    
+    # Mine block with both coinbase and spending tx
+    block = create_and_mine_block(
+        txids=[new_coinbase_id, spending_txid],
+        previd=current_tip,
+        created=block_timestamp,
+        miner="test",
+        note="Block with mempool tx"
+    )
+    
+    if not block:
+        suite.assert_true(False, "Tx removed when mined: Could not mine block")
+        return
+    
+    block_id = object_id(block)
+    print(f"  Mined block: {block_id}")
+    
+    # Send the new coinbase and block
+    print("  Sending block to node...")
+    resp_block = send_messages(
+        conn,
+        [{"type": "object", "object": new_coinbase},
+         {"type": "object", "object": block}],
+        wait_time=BLOCK_PROCESSING_WAIT,
+        debug=False
+    )
+    
+    block_errors = [r for r in resp_block if r.get("type") == "error"]
+    if block_errors:
+        print(f"  ⚠️  Block errors: {block_errors[:1]}")
+    
+    time.sleep(1.0)
+    
+    # 4. Verify transaction is no longer in mempool
+    print("  Checking if transaction removed from mempool...")
+    removed = False
+    for _ in range(8):
+        txids = get_mempool_txids(conn)
+        if spending_txid not in txids:
+            removed = True
+            break
+        time.sleep(0.3)
+    
+    suite.assert_true(removed, "Tx removed when mined: Tx removed from mempool after mining",
+                     "Transaction still in mempool after being included in block")
+    
+    if removed:
+        print(f"  ✓ Transaction removed from mempool after mining")
 
 
+def test_transaction_invalidated_by_block(conn: NodeConnection, suite: KermaTestSuite):
+    """Test: Transaction removed when its inputs are spent by block"""
+    print("\n--- Test: Transaction Invalidated By Block ---")
+    
+    privkey, pubkey = generate_keypair()
+    privkey2, pubkey2 = generate_keypair()
+    print(f"  Test pubkey: {pubkey}")
+    
+    # 1. Build chain with spendable coinbase
+    print("  Building chain with spendable coinbase...")
+    objects, coinbase_txid, tip = build_chain_appending_to_tip(
+        conn, pubkey, chain_length=2, miner="test"
+    )
+    if not objects:
+        suite.assert_true(False, "Tx invalidated by block: Could not build chain")
+        return
+    
+    # Send chain objects
+    print("  Sending chain objects...")
+    resp_chain = send_messages(
+        conn,
+        [{"type": "object", "object": obj} for obj in objects],
+        wait_time=BLOCK_PROCESSING_WAIT,
+        debug=False
+    )
+    
+    chain_errors = [r for r in resp_chain if r.get("type") == "error"]
+    if chain_errors:
+        suite.assert_true(False, "Tx invalidated by block: Chain accepted",
+                         f"Chain errors: {chain_errors[:1]}")
+        return
+    
+    time.sleep(0.8)
+    
+    # 2. Create two transactions spending the same UTXO
+    tx1 = create_spending_tx(coinbase_txid, privkey, pubkey, value=30000000000000)
+    tx1_id = object_id(tx1)
+    
+    tx2 = create_spending_tx(coinbase_txid, privkey, pubkey2, value=35000000000000)
+    tx2_id = object_id(tx2)
+    
+    print(f"  Transaction 1 (for mempool): {tx1_id}")
+    print(f"  Transaction 2 (for block): {tx2_id}")
+    
+    # 3. Add TX1 to mempool
+    print("  Adding TX1 to mempool...")
+    resp_tx1 = send_messages(
+        conn,
+        [{"type": "object", "object": tx1}],
+        wait_time=RESPONSE_WAIT_TIME,
+        debug=False
+    )
+    
+    tx1_errors = [r for r in resp_tx1 if r.get("type") == "error"]
+    if tx1_errors:
+        print(f"  ⚠️  TX1 errors: {tx1_errors[:1]}")
+    
+    # Verify TX1 is in mempool
+    tx1_in_mempool = False
+    for _ in range(6):
+        txids = get_mempool_txids(conn)
+        if tx1_id in txids:
+            tx1_in_mempool = True
+            break
+        time.sleep(0.3)
+    
+    suite.assert_true(tx1_in_mempool, "Tx invalidated by block: TX1 initially in mempool",
+                     "TX1 not added to mempool")
+    
+    if not tx1_in_mempool:
+        return
+    
+    print(f"  ✓ TX1 in mempool")
+    
+    # 4. Mine block containing TX2 (different spend of same UTXO)
+    print("  Mining block with TX2 (conflicts with TX1)...")
+    
+    # Get current tip
+    current_tip, tip_height, tip_created = get_chaintip(conn)
+    if not current_tip or not isinstance(tip_created, int):
+        suite.assert_true(False, "Tx invalidated by block: Could not get current tip")
+        return
+    
+    # Create block with TX2
+    block_timestamp = tip_created + 60
+    height = (tip_height + 1) if isinstance(tip_height, int) else 1
+    
+    # Need a coinbase for this block
+    new_coinbase = create_coinbase_tx(height=height, pubkey=pubkey)
+    new_coinbase_id = object_id(new_coinbase)
+    
+    # Mine block with coinbase and TX2
+    block = create_and_mine_block(
+        txids=[new_coinbase_id, tx2_id],
+        previd=current_tip,
+        created=block_timestamp,
+        miner="test",
+        note="Block with conflicting tx"
+    )
+    
+    if not block:
+        suite.assert_true(False, "Tx invalidated by block: Could not mine block")
+        return
+    
+    block_id = object_id(block)
+    print(f"  Mined block: {block_id}")
+    
+    # Send TX2, new coinbase, and block
+    print("  Sending TX2 and block to node...")
+    resp_block = send_messages(
+        conn,
+        [{"type": "object", "object": tx2},
+         {"type": "object", "object": new_coinbase},
+         {"type": "object", "object": block}],
+        wait_time=BLOCK_PROCESSING_WAIT,
+        debug=False
+    )
+    
+    block_errors = [r for r in resp_block if r.get("type") == "error"]
+    if block_errors:
+        print(f"  ⚠️  Block errors: {block_errors[:1]}")
+    
+    time.sleep(1.0)
+    
+    # 5. Verify TX1 is removed from mempool (now invalid)
+    print("  Checking if TX1 removed from mempool...")
+    tx1_removed = False
+    for _ in range(8):
+        txids = get_mempool_txids(conn)
+        if tx1_id not in txids:
+            tx1_removed = True
+            break
+        time.sleep(0.3)
+    
+    suite.assert_true(tx1_removed, "Tx invalidated by block: TX1 removed after conflict",
+                     "TX1 still in mempool after its input was spent by block")
+    
+    if tx1_removed:
+        print(f"  ✓ TX1 removed from mempool (invalidated by block)")
+
+
+def test_reorg_moves_transaction_to_mempool(conn: NodeConnection, suite: KermaTestSuite):
+    """Test: Transaction from orphaned chain moves back to mempool"""
+    print("\n--- Test: Reorg Moves Transaction To Mempool ---")
+    
+    priv_a, pub_a = generate_keypair()
+    priv_b, pub_b = generate_keypair()
+    
+    # 0) FIRST: Create a spendable UTXO in the base chain
+    print("  Creating spendable UTXO in base chain...")
+    setup_objs, setup_coinbase_txid, setup_tip = build_chain_appending_to_tip(
+        conn, pub_a, chain_length=2, miner="setup"
+    )
+    
+    if not setup_objs:
+        suite.assert_true(False, "Reorg tx to mempool: Built setup chain")
+        return
+    
+    # Send setup chain
+    print("  Sending setup chain...")
+    resp_setup = send_messages(
+        conn,
+        [{"type": "object", "object": o} for o in setup_objs],
+        wait_time=BLOCK_PROCESSING_WAIT
+    )
+    
+    err_setup = [r for r in resp_setup if r.get("type") == "error"]
+    if err_setup:
+        suite.assert_true(False, "Reorg tx to mempool: Setup chain accepted")
+        return
+    
+    time.sleep(1.0)
+    
+    # Get the new base (this is where both forks will branch from)
+    base_tip, base_h, base_created = get_chaintip(conn)
+    suite.assert_true(base_tip is not None, "Reorg tx to mempool: Got base tip")
+    suite.assert_true(isinstance(base_h, int), "Reorg tx to mempool: Got base height")
+    suite.assert_true(isinstance(base_created, int), "Reorg tx to mempool: Got base created")
+    
+    if not base_tip or not isinstance(base_h, int) or not isinstance(base_created, int):
+        return
+    
+    print(f"  Base (with spendable UTXO): {base_tip} (h={base_h}, created={base_created})")
+    print(f"  Spendable coinbase: {setup_coinbase_txid}")
+    
+    # Create the spending transaction NOW (spends from base chain, valid in both forks)
+    spending_tx = create_spending_tx(setup_coinbase_txid, priv_a, pub_a)
+    spending_tx_id = object_id(spending_tx)
+    print(f"  Created spending tx: {spending_tx_id}")
+    
+    # 1) Build fork A that INCLUDES the spending transaction
+    print("\n  Building fork A (includes spending transaction)...")
+    forkA_created_start = base_created + 1
+    forkA_objs = []
+    
+    # Fork A Block 1: includes the spending transaction
+    cb_a1 = create_coinbase_tx(height=base_h + 1, pubkey=pub_a)
+    cb_a1_id = object_id(cb_a1)
+    
+    block_a1 = create_and_mine_block(
+        txids=[cb_a1_id, spending_tx_id],  # Include spending tx
+        previd=base_tip,
+        created=forkA_created_start,
+        miner="A",
+        note="Fork A block 1 with tx"
+    )
+    if not block_a1:
+        suite.assert_true(False, "Reorg tx to mempool: Built fork A block 1")
+        return
+    
+    block_a1_id = object_id(block_a1)
+    forkA_objs.extend([spending_tx, cb_a1, block_a1])
+    
+    print(f"  Fork A block 1: {block_a1_id} (contains tx: {spending_tx_id})")
+    
+    # Send fork A
+    print("\n  Sending fork A (length 1, contains transaction)...")
+    respA = send_messages(
+        conn,
+        [{"type": "object", "object": o} for o in forkA_objs],
+        wait_time=BLOCK_PROCESSING_WAIT
+    )
+    
+    errA = [r for r in respA if r.get("type") == "error"]
+    suite.assert_true(len(errA) == 0, "Reorg tx to mempool: Fork A accepted",
+                     f"errors={errA[:1]}")
+    if errA:
+        return
+    
+    time.sleep(1.0)
+    
+    # Verify transaction is NOT in mempool (it's in a block)
+    txids_before = get_mempool_txids(conn)
+    tx_in_mempool_before = spending_tx_id in txids_before
+    suite.assert_true(not tx_in_mempool_before, 
+                     "Reorg tx to mempool: Tx not in mempool when in block",
+                     "Transaction should be in block, not mempool")
+    
+    if tx_in_mempool_before:
+        print(f"  ⚠️  Transaction unexpectedly in mempool before reorg")
+        return
+    
+    print(f"  ✓ Transaction in block, not in mempool")
+    
+    # 2) Build fork B (longer, without the transaction) from same base
+    print("\n  Building fork B (longer, no transaction)...")
+    forkB_created_start = base_created + 2
+    forkB_objs, _, forkB_tip = build_fork_from_base(
+        base_blockid=base_tip,
+        base_height=base_h,
+        base_created=base_created,
+        pubkey=pub_b,
+        length=2,  # longer than fork A (which is 1 block)
+        miner="B",
+        created_start=forkB_created_start,
+    )
+    
+    if not forkB_objs:
+        suite.assert_true(False, "Reorg tx to mempool: Built fork B")
+        return
+    
+    # Send fork B (should trigger reorg)
+    print("\n  Sending fork B (longer, should trigger reorg)...")
+    respB = send_messages(
+        conn,
+        [{"type": "object", "object": o} for o in forkB_objs],
+        wait_time=BLOCK_PROCESSING_WAIT
+    )
+    
+    errB = [r for r in respB if r.get("type") == "error"]
+    suite.assert_true(len(errB) == 0, "Reorg tx to mempool: Fork B accepted",
+                     f"errors={errB[:1]}")
+    if errB:
+        return
+    
+    time.sleep(1.5)
+    
+    # 3) Verify transaction is now IN mempool
+    print("\n  Checking if transaction moved to mempool after reorg...")
+    tx_in_mempool_after = False
+    final_txids = []
+    
+    for attempt in range(10):
+        txids_after = get_mempool_txids(conn)
+        final_txids = txids_after
+        if spending_tx_id in txids_after:
+            tx_in_mempool_after = True
+            break
+        time.sleep(0.4)
+    
+    print(f"  Mempool after reorg: {len(final_txids)} transaction(s)")
+    for txid in final_txids[:10]:
+        match = "✓ MATCH!" if txid == spending_tx_id else ""
+        print(f"    - {txid} {match}")
+    
+    suite.assert_true(tx_in_mempool_after,
+                     "Reorg tx to mempool: Tx moved to mempool after reorg",
+                     f"Expected {spending_tx_id} in mempool after reorg")
+    
+    if tx_in_mempool_after:
+        print(f"  ✓ Transaction successfully moved to mempool after reorg")
+
+def test_with_mempool_cleanup(conn: NodeConnection, suite: KermaTestSuite):
+    """Example test that cleans up mempool first"""
+    print("\n--- Test with Mempool Cleanup ---")
+    
+    # Generate keypair for cleanup
+    privkey, pubkey = generate_keypair()
+    
+    # Clear any existing mempool transactions
+    clear_mempool_by_including_txs(conn, pubkey)
+    
+    # Verify it's clean
+    txids = get_mempool_txids(conn)
+    suite.assert_true(len(txids) == 0, "Mempool cleared before test")
+
+def test_node_sends_getmempool_after_hello(suite: KermaTestSuite):
+    """Test: Node sends getmempool immediately after receiving hello"""
+    print("\n--- Test: Node Sends Getmempool After Hello ---")
+    
+    # We need to create a raw connection without sending hello first
+    # so we can observe what the node does when it receives hello
+    
+    print("  Creating raw connection to node...")
+    
+    try:
+        import socket
+        import json
+        
+        # Create a raw TCP socket connection
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((NODE_HOST, NODE_PORT))
+        
+        print("  ✓ Connected to node")
+        
+        # Send hello message
+        hello_msg = {
+            "type": "hello",
+            "version": "0.10.0",
+            "agent": "TestAgent-GetmempoolCheck"
+        }
+        
+        hello_json = canonicalize(hello_msg) + '\n'
+        sock.sendall(hello_json.encode('utf-8'))
+        
+        print("  Sent hello message to node")
+        print("  Waiting for node's response...")
+        
+        # Collect responses for a few seconds
+        responses = []
+        start_time = time.time()
+        buffer = ""
+        
+        while time.time() - start_time < 3.0:
+            try:
+                sock.settimeout(0.5)
+                data = sock.recv(4096).decode('utf-8')
+                if not data:
+                    break
+                
+                buffer += data
+                
+                # Process complete lines
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    if line:
+                        try:
+                            response = json.loads(line)
+                            responses.append(response)
+                            print(f"    Received: {response.get('type', 'unknown')}")
+                        except json.JSONDecodeError:
+                            print(f"    Failed to parse: {line}")
+            except socket.timeout:
+                # No more data for now
+                if responses:
+                    break
+                continue
+        
+        sock.close()
+        
+        print(f"\n  Received {len(responses)} response(s) from node")
+        
+        # Check if node sent hello back
+        hello_received = False
+        getmempool_received = False
+        
+        for resp in responses:
+            resp_type = resp.get('type', '')
+            
+            if resp_type == 'hello':
+                hello_received = True
+                print(f"  ✓ Node sent hello back")
+            
+            if resp_type == 'getmempool':
+                getmempool_received = True
+                print(f"  ✓ Node sent getmempool!")
+        
+        if not hello_received:
+            print(f"  ⚠️  Node did not send hello back")
+        
+        if not getmempool_received:
+            print(f"  ⚠️  Node did not send getmempool after hello")
+            print(f"  Note: Node should send getmempool immediately after hello handshake")
+        
+        suite.assert_true(
+            hello_received,
+            "Getmempool after hello: Node sends hello back",
+            "Node should respond to hello with hello"
+        )
+        
+        suite.assert_true(
+            getmempool_received,
+            "Getmempool after hello: Node sends getmempool",
+            "Node should send getmempool after hello handshake"
+        )
+        
+    except Exception as e:
+        print(f"  ⚠️  Error during test: {e}")
+        import traceback
+        traceback.print_exc()
+        suite.assert_true(False, "Getmempool after hello: Test completed", str(e))
+
+def test_request_unknown_mempool_transactions(conn: NodeConnection, suite: KermaTestSuite):
+    """Test: Node requests unknown transactions from mempool message"""
+    print("\n--- Test: Request Unknown Mempool Transactions ---")
+    
+    privkey, pubkey = generate_keypair()
+    
+    # Build a chain with a transaction
+    print("  Building chain with transaction...")
+    objects, coinbase_txid, tip = build_chain_appending_to_tip(
+        conn, pubkey, chain_length=2, miner="test"
+    )
+    
+    if not objects:
+        suite.assert_true(False, "Request unknown: Could not build chain")
+        return
+    
+    # Send chain
+    send_messages(conn, [{"type": "object", "object": obj} for obj in objects],
+                  wait_time=BLOCK_PROCESSING_WAIT)
+    time.sleep(0.8)
+    
+    # Create a transaction but DON'T send it yet
+    spending_tx = create_spending_tx(coinbase_txid, privkey, pubkey)
+    spending_txid = object_id(spending_tx)
+    
+    print(f"  Created transaction: {spending_txid}")
+    print(f"  (NOT sending it to the node yet)")
+    
+    # Verify the node doesn't know about this transaction
+    mempool_before = get_mempool_txids(conn)
+    if spending_txid in mempool_before:
+        print(f"  ⚠️  Transaction already in mempool (unexpected)")
+        suite.assert_true(False, "Request unknown: Tx not in mempool initially")
+        return
+    
+    print(f"  ✓ Transaction not in node's mempool (as expected)")
+    
+    # Now tell the node about this transaction via a mempool message
+    print(f"\n  Sending mempool message with unknown txid...")
+    conn.clear_responses()
+    
+    # Send mempool message with the unknown txid
+    fake_mempool = {"type": "mempool", "txids": [spending_txid]}
+    conn.send(fake_mempool)
+    
+    # Give node time to process and send getobject request
+    time.sleep(0.5)
+    
+    # Check if node sent getobject request for the unknown transaction
+    responses = conn.get_responses(timeout=2.0, debug=True)
+    
+    print(f"\n  Received {len(responses)} response(s) from node:")
+    
+    getobject_sent = False
+    for resp in responses:
+        resp_type = resp.get('type', 'unknown')
+        print(f"    - Response type: {resp_type}")
+        
+        if resp_type == 'getobject':
+            objectid = resp.get('objectid', '')
+            print(f"      Requesting object: {objectid}")
+            
+            if objectid == spending_txid:
+                getobject_sent = True
+                print(f"      ✓ Node requested the unknown transaction!")
+    
+    if getobject_sent:
+        print(f"\n  ✓ Node correctly requested unknown transaction with getobject")
+        
+        # Now send the transaction object back to complete the exchange
+        print(f"  Sending the transaction object back to node...")
+        conn.send({"type": "object", "object": spending_tx})
+        time.sleep(0.5)
+        
+        # Verify it's now in the mempool
+        mempool_after = get_mempool_txids(conn)
+        if spending_txid in mempool_after:
+            print(f"  ✓ Transaction now in mempool after providing it")
+        else:
+            print(f"  ⚠️  Transaction not in mempool (might be timing issue)")
+    else:
+        print(f"\n  ⚠️  Node did not request the unknown transaction")
+        print(f"  This could mean:")
+        print(f"    - Node doesn't implement automatic getobject for unknown mempool txs")
+        print(f"    - Node needs more time to process")
+        print(f"    - Node has different behavior")
+    
+    suite.assert_true(
+        getobject_sent,
+        "Request unknown: Node sends getobject for unknown mempool tx",
+        "Node should request unknown transactions from mempool message"
+    )
 
 # ============================================================================
 # MAIN
@@ -1117,6 +1829,17 @@ def main():
         run_test(test_double_spend_rejection, suite, test_delay=1.0)
         run_test(test_mempool_reorg, suite, test_delay=1.0)
         
+        print("\n" + "=" * 50)
+        print("Adding additional tests...")
+        print("=" * 50)
+        # Add to the MEMPOOL FUNCTIONALITY TESTS section:
+        run_test(test_transaction_removed_when_mined, suite, test_delay=1.0)
+        run_test(test_transaction_invalidated_by_block, suite, test_delay=1.0)
+        run_test(test_reorg_moves_transaction_to_mempool, suite, test_delay=1.0)       
+        run_test(test_request_unknown_mempool_transactions, suite, test_delay=1.0)
+        test_node_sends_getmempool_after_hello(suite)
+        run_test(test_with_mempool_cleanup, suite, test_delay=1.0)
+
     except KeyboardInterrupt:
         print("\n\n⚠️  Tests interrupted by user")
     except Exception as e:
