@@ -104,13 +104,13 @@ def mk_chaintip_msg(blockid):
     return {"type": "chaintip", "blockid": CHAINTIP}
 
 def mk_mempool_msg(txids):
-    pass # TODO
+    return {"type": "mempool", "txids": txids}
 
 def mk_getchaintip_msg():
     return {"type": "getchaintip"}
 
 def mk_getmempool_msg():
-    pass # TODO
+    return {"type": "getmempool"}
 
 # parses a message as json. returns decoded message
 def parse_msg(msg_str):
@@ -271,7 +271,8 @@ def validate_getchaintip_msg(msg_dict):
 
 # raise an exception if not valid
 def validate_getmempool_msg(msg_dict):
-    pass # TODO
+    if len(msg_dict) != 1:
+        raise ErrorInvalidFormat("Invalid getmempool message")
 
 # raise an exception if not valid
 def validate_error_msg(msg_dict):
@@ -384,7 +385,15 @@ def validate_chaintip_msg(msg_dict):
     
 # raise an exception if not valid
 def validate_mempool_msg(msg_dict):
-    pass # todo
+    if len(msg_dict) != 2:
+        raise ErrorInvalidFormat("More than two keys set")
+    if not "txids" in msg_dict:
+        raise ErrorInvalidFormat("txids not set")
+    if not isinstance(msg_dict["txids"], list):
+        raise ErrorInvalidFormat("txids not a list")
+    for txid in msg_dict["txids"]:
+        if not objects.validate_objectid(txid):
+            raise ErrorInvalidFormat(f"Invalid format of txid {txid}")
         
 def validate_msg(msg_dict):
     msg_type = msg_dict['type']
@@ -521,10 +530,14 @@ async def handle_object_msg(msg_dict, queue):
             VALIDATOR.add_peer(objid, queue)
             return # no need to rerun verification that is pending yet
 
+        # save for after commit
+        mempool_action = None
+
         if obj_dict['type'] == 'transaction':
             prev_txs = gather_previous_txs(cur, obj_dict)
             objects.verify_transaction(obj_dict, prev_txs)
             objects.store_transaction(obj_dict, cur)
+            mempool_action = ("tx", obj_dict)
         elif obj_dict['type'] == 'block':
             new_utxo, height = objects.verify_block(obj_dict)
             objects.store_block(obj_dict, new_utxo, height, cur)
@@ -532,10 +545,20 @@ async def handle_object_msg(msg_dict, queue):
             if height > CHAINTIP_HEIGHT:
                 CHAINTIP_HEIGHT = height
                 CHAINTIP = objid
+                mempool_action = ("block", objid)
         else:
             raise ErrorInvalidFormat("Got an object of unknown type") # assert: false
         # if everything worked, commit this
         con.commit()
+
+        # now update mempool if needed
+        if mempool_action:
+            print("EXECUTING MEMPOOL ACTION:", mempool_action)
+            kind, data = mempool_action
+            if kind == "tx":
+                MEMPOOL.try_add_tx(data)
+            elif kind == "block":
+                MEMPOOL.rebase_to_block(data)
 
         print("Added new object '{}'".format(objid))
         VALIDATOR.new_valid_object(objid)
@@ -590,7 +613,7 @@ async def handle_getchaintip_msg(msg_dict, writer):
 
 
 async def handle_getmempool_msg(msg_dict, writer):
-    pass # TODO
+    await write_msg(writer, mk_mempool_msg(MEMPOOL.txs))
 
 
 async def handle_chaintip_msg(msg_dict):
@@ -604,7 +627,19 @@ async def handle_chaintip_msg(msg_dict):
             raise ErrorInvalidFormat(f"Proposed chaintip {objectid} is not a block")
 
 async def handle_mempool_msg(msg_dict):
-    pass # TODO
+    con = sqlite3.connect(const.DB_NAME)
+    try:
+        cur = con.cursor()
+        for txid in msg_dict["txids"]:
+            res = cur.execute("SELECT obj FROM objects WHERE oid = ?", (txid,))
+            row = res.fetchone()
+            if row is not None:
+                tx = objects.expand_object(row[0])
+                MEMPOOL.try_add_tx(tx)
+    finally:
+        con.close()
+    
+        
 
 # Helper function
 async def handle_queue_msg(msg_dict, writer):
@@ -643,6 +678,7 @@ async def handle_connection(reader, writer):
         await write_msg(writer, mk_hello_msg())
         await write_msg(writer, mk_getpeers_msg())
         await write_msg(writer, mk_getchaintip_msg())
+        await write_msg(writer, mk_getmempool_msg())
         
         # Complete handshake
         firstmsg_str = await asyncio.wait_for(reader.readline(),
