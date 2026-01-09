@@ -628,6 +628,7 @@ async def handle_chaintip_msg(msg_dict):
 
 async def handle_mempool_msg(msg_dict):
     con = sqlite3.connect(const.DB_NAME)
+    missing_txids = []
     try:
         cur = con.cursor()
         for txid in msg_dict["txids"]:
@@ -636,8 +637,14 @@ async def handle_mempool_msg(msg_dict):
             if row is not None:
                 tx = objects.expand_object(row[0])
                 MEMPOOL.try_add_tx(tx)
+            else:
+                missing_txids.append(txid)
     finally:
         con.close()
+
+    # request missing transactions
+    for txid in missing_txids:
+        await broadcast_msg(mk_getobject_msg(txid))
     
         
 
