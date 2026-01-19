@@ -6,6 +6,5 @@ message/__pycache__
 peers.csv
 peers.json
 .idea
-Kerma_*
 db.db
 objects.json
